@@ -1,0 +1,22 @@
+-- Insérer les catégories de services de base
+INSERT INTO service_categories (name, slug, icon) VALUES
+('Plomberie', 'plomberie', 'water-outline'),
+('Électricité', 'electricite', 'flash-outline'),
+('Nettoyage', 'menage', 'sparkles-outline'),
+('Construction', 'construction', 'hammer-outline'),
+('Peinture', 'peinture', 'brush-outline'),
+('Jardinage', 'jardinage', 'leaf-outline'),
+('Coiffure', 'coiffure', 'cut-outline'),
+('Beauté & Cosmétique', 'beaute', 'sparkles-outline'),
+('Santé & Bien-être', 'sante', 'medical-outline'),
+('Fitness & Sport', 'fitness', 'barbell-outline'),
+('Cuisine & Restauration', 'cuisine', 'restaurant-outline'),
+('Transport & Logistique', 'transport', 'car-outline'),
+('Immobilier', 'immobilier', 'home-outline'),
+('Soutien Scolaire', 'tutoring', 'school-outline'),
+('Conseil & Consulting', 'conseil', 'briefcase-outline'),
+('Informatique & Tech', 'informatique', 'laptop-outline'),
+('Design & Créatif', 'design', 'pencil-outline'),
+('Mécanique Auto', 'mecanique', 'settings-outline'),
+('Événementiel', 'evenementiel', 'balloon-outline'),
+('Formation Professionnelle', 'formation', 'book-outline');
