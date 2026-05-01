@@ -2,25 +2,43 @@ import { pool } from "../../../config/db.js";
 
 /**
  * Récupère toutes les données nécessaires pour la page d'accueil de l'utilisateur.
+ * Inclut les professionnels à proximité si les coordonnées sont fournies.
  */
 export const getHomeData = async (req, res) => {
     try {
+        const { lat, lng, radius = 10 } = req.query;
+
         // 1. Récupérer les sponsors actifs (home_top)
         const [sponsors] = await pool.query(
-            "SELECT id, name, banner_url FROM sponsors WHERE status = 'active' AND placement = 'home_top' ORDER BY priority DESC LIMIT 5"
+            `SELECT id, name, banner_url, website_url, logo_url 
+             FROM sponsors 
+             WHERE status = 'active' 
+               AND placement = 'home_top' 
+               AND (starts_at IS NULL OR starts_at <= NOW())
+               AND (ends_at IS NULL OR ends_at >= NOW())
+             ORDER BY priority DESC 
+             LIMIT 5`
         );
 
         // 2. Récupérer toutes les catégories de services
         const [categories] = await pool.query(
-            "SELECT id, name, slug, icon FROM service_categories ORDER BY name ASC"
+            `SELECT id, name, slug, icon 
+             FROM service_categories 
+             ORDER BY name ASC`
         );
 
         // 3. Récupérer les professionnels les mieux notés
-        // On joint la table 'users' pour avoir le nom et l'avatar du pro
         const [topRatedPros] = await pool.query(`
             SELECT 
-                p.id, p.business_name, p.rating_avg, p.rating_count, 
-                u.username, u.avatar_url 
+                p.id, 
+                p.business_name, 
+                p.description,
+                p.rating_avg, 
+                p.rating_count,
+                p.city,
+                u.username, 
+                u.avatar_url,
+                COALESCE(p.rating_avg, 0) as rating
             FROM professionals p
             JOIN users u ON p.user_id = u.id
             WHERE p.status = 'active'
@@ -31,8 +49,15 @@ export const getHomeData = async (req, res) => {
         // 4. Récupérer les professionnels récents
         const [recentPros] = await pool.query(`
             SELECT 
-                p.id, p.business_name, p.rating_avg, p.rating_count, 
-                u.username, u.avatar_url 
+                p.id, 
+                p.business_name, 
+                p.description,
+                p.rating_avg, 
+                p.rating_count,
+                p.city,
+                u.username, 
+                u.avatar_url,
+                p.created_at
             FROM professionals p
             JOIN users u ON p.user_id = u.id
             WHERE p.status = 'active'
@@ -40,16 +65,235 @@ export const getHomeData = async (req, res) => {
             LIMIT 10
         `);
 
-        // Renvoyer les données structurées
-        return res.status(200).json({
-            sponsors,
-            categories,
-            topRatedPros,
-            recentPros
-        });
+        // 5. Récupérer les professionnels en vedette (is_featured = 1)
+        const [featuredPros] = await pool.query(`
+            SELECT 
+                p.id, 
+                p.business_name, 
+                p.description,
+                p.rating_avg, 
+                p.rating_count,
+                p.city,
+                u.username, 
+                u.avatar_url
+            FROM professionals p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.status = 'active' AND p.is_featured = 1
+            ORDER BY p.rating_avg DESC
+            LIMIT 6
+        `);
+
+        // 6. Récupérer les professionnels les plus proches (si coordonnées fournies)
+        let nearbyPros = [];
+        if (lat && lng) {
+            [nearbyPros] = await pool.query(`
+                SELECT 
+                    p.id, 
+                    p.business_name, 
+                    p.description,
+                    p.rating_avg, 
+                    p.rating_count,
+                    p.city,
+                    u.username, 
+                    u.avatar_url,
+                    ROUND(
+                        6371 * acos(
+                            cos(radians(?)) * cos(radians(p.lat)) * 
+                            cos(radians(p.lng) - radians(?)) + 
+                            sin(radians(?)) * sin(radians(p.lat))
+                        ), 2
+                    ) as distance_km
+                FROM professionals p
+                JOIN users u ON p.user_id = u.id
+                WHERE p.status = 'active' 
+                    AND p.lat IS NOT NULL 
+                    AND p.lng IS NOT NULL
+                    AND p.lat != 0
+                    AND p.lng != 0
+                HAVING distance_km <= ?
+                ORDER BY distance_km ASC
+                LIMIT 10
+            `, [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius)]);
+        } else {
+            [nearbyPros] = await pool.query(`
+                SELECT 
+                    p.id, 
+                    p.business_name, 
+                    p.description,
+                    p.rating_avg, 
+                    p.rating_count,
+                    p.city,
+                    u.username, 
+                    u.avatar_url,
+                    p.lat,
+                    p.lng
+                FROM professionals p
+                JOIN users u ON p.user_id = u.id
+                WHERE p.status = 'active' 
+                    AND p.lat IS NOT NULL 
+                    AND p.lng IS NOT NULL
+                    AND p.lat != 0
+                    AND p.lng != 0
+                ORDER BY p.created_at DESC
+                LIMIT 10
+            `);
+        }
+
+        // 7. Compter le nombre total de professionnels actifs
+        const [totalPros] = await pool.query(`
+            SELECT COUNT(*) as total
+            FROM professionals
+            WHERE status = 'active'
+        `);
+
+        // 8. Compter le nombre total de catégories
+        const [totalCategories] = await pool.query(`
+            SELECT COUNT(*) as total
+            FROM service_categories
+        `);
+
+        // 9. Récupérer les sponsors du milieu de page (home_middle)
+        const [middleSponsors] = await pool.query(
+            `SELECT id, name, banner_url, website_url 
+             FROM sponsors 
+             WHERE status = 'active' 
+               AND placement = 'home_middle'
+               AND (starts_at IS NULL OR starts_at <= NOW())
+               AND (ends_at IS NULL OR ends_at >= NOW())
+             ORDER BY priority DESC 
+             LIMIT 3`
+        );
+
+        // Structurer la réponse
+        const response = {
+            success: true,
+            data: {
+                sponsors: {
+                    top: sponsors,
+                    middle: middleSponsors
+                },
+                categories: categories,
+                professionals: {
+                    featured: featuredPros,
+                    top_rated: topRatedPros,
+                    recent: recentPros,
+                    nearby: nearbyPros
+                },
+                stats: {
+                    total_professionals: totalPros[0].total,
+                    total_categories: totalCategories[0].total
+                }
+            }
+        };
+
+        // Si des coordonnées ont été fournies, ajouter l'info de localisation
+        if (lat && lng) {
+            response.data.location = {
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                radius_km: parseFloat(radius)
+            };
+        }
+
+        return res.status(200).json(response);
 
     } catch (error) {
         console.error("❌ [getHomeData] Erreur :", error);
-        return res.status(500).json({ message: "Erreur lors de la récupération des données de la page d'accueil" });
+        return res.status(500).json({ 
+            success: false,
+            message: "Erreur lors de la récupération des données de la page d'accueil",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ── Récupérer uniquement les professionnels à proximité (avec pagination) ──
+export const getNearbyProfessionals = async (req, res) => {
+    try {
+        const { lat, lng, radius = 10, limit = 20, page = 1 } = req.query;
+        const offset = (page - 1) * limit;
+
+        if (!lat || !lng) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Les coordonnées lat et lng sont requises" 
+            });
+        }
+
+        // Compter le nombre total de pros dans le rayon
+        const [countResult] = await pool.query(`
+            SELECT COUNT(*) as total
+            FROM professionals p
+            WHERE p.status = 'active' 
+                AND p.lat IS NOT NULL 
+                AND p.lng IS NOT NULL
+                AND p.lat != 0
+                AND p.lng != 0
+                AND (
+                    6371 * acos(
+                        cos(radians(?)) * cos(radians(p.lat)) * 
+                        cos(radians(p.lng) - radians(?)) + 
+                        sin(radians(?)) * sin(radians(p.lat))
+                    )
+                ) <= ?
+        `, [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius)]);
+
+        // Récupérer les pros avec distance
+        const [professionals] = await pool.query(`
+            SELECT 
+                p.id, 
+                p.business_name, 
+                p.description,
+                p.rating_avg, 
+                p.rating_count,
+                p.city,
+                p.address,
+                p.lat,
+                p.lng,
+                u.username, 
+                u.avatar_url,
+                u.phone,
+                ROUND(
+                    6371 * acos(
+                        cos(radians(?)) * cos(radians(p.lat)) * 
+                        cos(radians(p.lng) - radians(?)) + 
+                        sin(radians(?)) * sin(radians(p.lat))
+                    ), 2
+                ) as distance_km
+            FROM professionals p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.status = 'active' 
+                AND p.lat IS NOT NULL 
+                AND p.lng IS NOT NULL
+                AND p.lat != 0
+                AND p.lng != 0
+            HAVING distance_km <= ?
+            ORDER BY distance_km ASC
+            LIMIT ? OFFSET ?
+        `, [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius), parseInt(limit), offset]);
+
+        res.status(200).json({
+            success: true,
+            data: professionals,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: countResult[0].total,
+                pages: Math.ceil(countResult[0].total / limit)
+            },
+            location: {
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                radius_km: parseFloat(radius)
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ [getNearbyProfessionals] Erreur :", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Erreur lors de la récupération des professionnels à proximité",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 };

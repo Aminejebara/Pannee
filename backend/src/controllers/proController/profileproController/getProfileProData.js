@@ -19,26 +19,18 @@ const getProfileProData = async (req, res) => {
                 p.address,
                 p.city,
                 p.country,
+                p.lat,
+                p.lng,
                 p.rating_avg,
                 p.rating_count,
                 p.created_at,
                 u.username,
                 u.email,
                 u.phone,
-                GROUP_CONCAT(
-                    JSON_OBJECT(
-                        'id', sc.id,
-                        'name', sc.name,
-                        'slug', sc.slug,
-                        'icon', sc.icon
-                    )
-                ) as categories
+                u.avatar_url
             FROM professionals p
             JOIN users u ON p.user_id = u.id
-            LEFT JOIN professional_categories pc ON p.id = pc.professional_id
-            LEFT JOIN service_categories sc ON pc.category_id = sc.id
             WHERE p.id = ?
-            GROUP BY p.id
             `,
             [professionalId]
         );
@@ -52,17 +44,30 @@ const getProfileProData = async (req, res) => {
 
         const proData = professional[0];
 
-        // Parse categories from GROUP_CONCAT
-        let categories = [];
-        if (proData.categories && proData.categories.trim() !== '') {
-            try {
-                const categoriesJson = '[' + proData.categories + ']';
-                categories = JSON.parse(categoriesJson).filter(cat => cat && cat.id);
-            } catch (error) {
-                console.warn('Failed to parse categories:', error);
-                categories = [];
-            }
-        }
+        const [categories] = await connection.execute(
+            `
+            SELECT sc.id, sc.name, sc.slug, sc.icon
+            FROM service_categories sc
+            JOIN professional_categories pc ON sc.id = pc.category_id
+            WHERE pc.professional_id = ?
+            ORDER BY sc.name ASC
+            `,
+            [professionalId]
+        );
+
+        const [reviews] = await connection.execute(
+            `
+            SELECT 
+                r.id, r.rating, r.comment, r.created_at,
+                u.id as user_id, u.username, u.avatar_url
+            FROM reviews r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.professional_id = ? AND r.is_visible = 1
+            ORDER BY r.created_at DESC
+            LIMIT 5
+            `,
+            [professionalId]
+        );
 
         const response = {
             success: true,
@@ -73,20 +78,25 @@ const getProfileProData = async (req, res) => {
                 username: proData.username,
                 email: proData.email,
                 phone: proData.phone,
+                avatar_url: proData.avatar_url,
                 address: proData.address,
                 city: proData.city,
                 country: proData.country,
+                lat: proData.lat,
+                lng: proData.lng,
                 rating: {
                     average: Number(proData.rating_avg).toFixed(1),
                     count: proData.rating_count,
                 },
                 categories: categories,
+                reviews: reviews,
                 joinedAt: proData.created_at,
                 isOwner: userId === proData.user_id,
             },
         };
 
         return res.status(200).json(response);
+        
     } catch (error) {
         console.error('Error fetching professional profile:', error);
         return res.status(500).json({
@@ -105,28 +115,29 @@ const updateProfileProData = async (req, res) => {
     try {
         const { professionalId } = req.params;
         const userId = req.user?.id;
-        const { businessName, description, address, city, country, categoryIds = [] } =
-            req.body;
+        const { 
+            businessName, 
+            description, 
+            address, 
+            city, 
+            country,
+            lat,
+            lng,
+            categoryIds = [] 
+        } = req.body;
 
         console.log('📡 Backend received UPDATE request:');
         console.log('  - professionalId:', professionalId);
-        console.log('  - userId from auth:', userId);
         console.log('  - businessName:', businessName);
-        console.log('  - description:', description);
-        console.log('  - address:', address);
-        console.log('  - city:', city);
-        console.log('  - country:', country);
 
         connection = await pool.getConnection();
 
-        // Check if professional exists AND user owns it
         const [existingPro] = await connection.execute(
             'SELECT id, user_id FROM professionals WHERE id = ?',
             [professionalId]
         );
 
         if (!existingPro || existingPro.length === 0) {
-            console.error(`❌ Professional ${professionalId} not found`);
             return res.status(404).json({
                 success: false,
                 message: 'Professional not found',
@@ -134,28 +145,34 @@ const updateProfileProData = async (req, res) => {
         }
 
         if (existingPro[0].user_id !== userId) {
-            console.error(`❌ Unauthorized: userId ${userId} doesn't match professional userId ${existingPro[0].user_id}`);
             return res.status(403).json({
                 success: false,
-                message: 'Unauthorized: You can only update your own profile',
+                message: 'Unauthorized',
             });
         }
 
-        // Update professional basic info
-        console.log('🔄 Executing UPDATE query with:', [businessName, description, address, city, country, professionalId]);
+        await connection.beginTransaction();
+
+        // Convertir undefined en null pour MySQL
+        const updateLat = lat !== undefined ? lat : null;
+        const updateLng = lng !== undefined ? lng : null;
+
         await connection.execute(
             `
             UPDATE professionals 
-            SET business_name = ?, description = ?, address = ?, city = ?, country = ?
+            SET business_name = ?, 
+                description = ?, 
+                address = ?, 
+                city = ?, 
+                country = ?,
+                lat = ?,
+                lng = ?
             WHERE id = ?
             `,
-            [businessName, description, address, city, country, professionalId]
+            [businessName, description, address, city, country, updateLat, updateLng, professionalId]
         );
-        console.log('✅ UPDATE query executed successfully');
 
-        // If categoryIds provided, update categories
         if (categoryIds && categoryIds.length > 0) {
-            // Validate all categoryIds exist
             const placeholders = categoryIds.map(() => '?').join(',');
             const [validCategories] = await connection.execute(
                 `SELECT id FROM service_categories WHERE id IN (${placeholders})`,
@@ -163,20 +180,18 @@ const updateProfileProData = async (req, res) => {
             );
 
             if (validCategories.length !== categoryIds.length) {
-                console.error(`❌ Invalid category IDs: ${categoryIds}`);
+                await connection.rollback();
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid category IDs',
                 });
             }
 
-            // Delete existing categories
             await connection.execute(
                 'DELETE FROM professional_categories WHERE professional_id = ?',
                 [professionalId]
             );
 
-            // Insert new categories
             for (const categoryId of categoryIds) {
                 await connection.execute(
                     'INSERT INTO professional_categories (professional_id, category_id) VALUES (?, ?)',
@@ -185,13 +200,39 @@ const updateProfileProData = async (req, res) => {
             }
         }
 
-        console.log('✅ Professional profile updated successfully');
+        await connection.commit();
+
+        const [updatedPro] = await connection.execute(
+            `
+            SELECT 
+                p.id as professional_id,
+                p.business_name,
+                p.description,
+                p.address,
+                p.city,
+                p.country,
+                p.lat,
+                p.lng,
+                u.username,
+                u.email,
+                u.phone,
+                u.avatar_url
+            FROM professionals p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.id = ?
+            `,
+            [professionalId]
+        );
+
         return res.status(200).json({
             success: true,
             message: 'Professional profile updated successfully',
+            data: updatedPro[0]
         });
+        
     } catch (error) {
         console.error('❌ Error updating professional profile:', error);
+        if (connection) await connection.rollback();
         return res.status(500).json({
             success: false,
             message: 'Error updating professional profile',
@@ -211,7 +252,6 @@ const deleteProfileProData = async (req, res) => {
 
         connection = await pool.getConnection();
 
-        // Check if professional exists AND user owns it
         const [existingPro] = await connection.execute(
             'SELECT id, user_id FROM professionals WHERE id = ?',
             [professionalId]
@@ -227,22 +267,37 @@ const deleteProfileProData = async (req, res) => {
         if (existingPro[0].user_id !== userId) {
             return res.status(403).json({
                 success: false,
-                message: 'Unauthorized: You can only delete your own profile',
+                message: 'Unauthorized',
             });
         }
 
-        // Delete professional profile (cascades should delete related data)
+        await connection.beginTransaction();
+
+        await connection.execute(
+            'DELETE FROM professional_categories WHERE professional_id = ?',
+            [professionalId]
+        );
+
         await connection.execute(
             'DELETE FROM professionals WHERE id = ?',
             [professionalId]
         );
 
+        await connection.execute(
+            'UPDATE users SET role = "user" WHERE id = ?',
+            [userId]
+        );
+
+        await connection.commit();
+
         return res.status(200).json({
             success: true,
             message: 'Professional profile deleted successfully',
         });
+        
     } catch (error) {
         console.error('Error deleting professional profile:', error);
+        if (connection) await connection.rollback();
         return res.status(500).json({
             success: false,
             message: 'Error deleting professional profile',
@@ -280,4 +335,131 @@ const getAvailableCategories = async (req, res) => {
     }
 };
 
-export { getProfileProData, updateProfileProData, deleteProfileProData, getAvailableCategories };
+// ── UPLOAD AVATAR ───────────────────────────────────────────
+const uploadProAvatar = async (req, res) => {
+    let connection;
+    try {
+        const { professionalId } = req.params;
+        const userId = req.user?.id;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'Aucun fichier uploadé'
+            });
+        }
+
+        connection = await pool.getConnection();
+
+        const [existingPro] = await connection.execute(
+            'SELECT id, user_id FROM professionals WHERE id = ?',
+            [professionalId]
+        );
+
+        if (!existingPro || existingPro.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Professional not found',
+            });
+        }
+
+        if (existingPro[0].user_id !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized',
+            });
+        }
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const avatarUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
+
+        await connection.execute(
+            'UPDATE users SET avatar_url = ? WHERE id = ?',
+            [avatarUrl, userId]
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Photo de profil mise à jour',
+            data: { avatar_url: avatarUrl }
+        });
+
+    } catch (error) {
+        console.error('Error uploading avatar:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'upload',
+            error: error.message
+        });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+// ── GET REVIEWS AVEC PAGINATION ─────────────────────────────
+const getProReviews = async (req, res) => {
+    let connection;
+    try {
+        const { professionalId } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        console.log('🔵 getProReviews - professionalId:', professionalId);
+        console.log('🔵 getProReviews - page:', page, 'limit:', limit, 'offset:', offset);
+
+        connection = await pool.getConnection();
+
+        // Utiliser query() au lieu de execute() pour LIMIT et OFFSET
+        const [reviews] = await connection.query(
+            `
+            SELECT 
+                r.id, r.rating, r.comment, r.created_at,
+                u.id as user_id, u.username, u.avatar_url as user_avatar
+            FROM reviews r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.professional_id = ? AND r.is_visible = 1
+            ORDER BY r.created_at DESC
+            LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
+            `,
+            [professionalId]
+        );
+
+        const [countResult] = await connection.query(
+            `SELECT COUNT(*) as total FROM reviews WHERE professional_id = ? AND is_visible = 1`,
+            [professionalId]
+        );
+
+        res.status(200).json({
+            success: true,
+            data: reviews,
+            pagination: {
+                page: page,
+                limit: limit,
+                total: countResult[0].total,
+                pages: Math.ceil(countResult[0].total / limit)
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching reviews:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching reviews',
+            error: error.message
+        });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+
+
+export { 
+    getProfileProData, 
+    updateProfileProData, 
+    deleteProfileProData, 
+    getAvailableCategories,
+    uploadProAvatar ,
+    getProReviews
+};
