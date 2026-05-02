@@ -1,16 +1,30 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useAuthStore from '../store/useAuthStore'
 import { authService } from '../services/auth/authService'
+import { connectSocket, disconnectSocket } from '../services/socketService'
 
 export const useAuth = () => {
   const [loading, setLoading] = useState(false)
   const { user, professional, accessToken, refreshToken, isAuthenticated, error, setAuth, logout: storeLogout, setError } = useAuthStore()
 
+  // Connecter/déconnecter le socket selon l'authentification
+  useEffect(() => {
+    if (isAuthenticated && accessToken) {
+      connectSocket()
+    } else {
+      disconnectSocket()
+    }
+    
+    return () => {
+      disconnectSocket()
+    }
+  }, [isAuthenticated, accessToken])
+
   const login = async (email, password, location = null) => {
     setLoading(true)
     try {
       const data = await authService.login(email, password, location)
-      console.log('Login response:', data) // Pour debug
+      console.log('Login response:', data)
       setAuth(data.user, data.professional, data.accessToken, data.refreshToken)
       return { success: true, user: data.user, professional: data.professional }
     } catch (error) {
@@ -19,7 +33,9 @@ export const useAuth = () => {
       const message = error.response?.data?.message || 'Erreur de connexion'
       setError(message)
       return { success: false, error: message }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const registerUser = async (username, email, password, phone) => {
@@ -35,7 +51,9 @@ export const useAuth = () => {
       const message = error.response?.data?.message || "Erreur d'inscription"
       setError(message)
       return { success: false, error: message }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const registerPro = async (formData) => {
@@ -51,7 +69,9 @@ export const useAuth = () => {
       const message = error.response?.data?.message || "Erreur d'inscription"
       setError(message)
       return { success: false, error: message }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const verifyOTP = async (email, code) => {
@@ -65,7 +85,9 @@ export const useAuth = () => {
       const message = error.response?.data?.message || 'Code invalide'
       setError(message)
       return { success: false, error: message }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const googleAuth = async (idToken) => {
@@ -79,7 +101,9 @@ export const useAuth = () => {
       const message = error.response?.data?.message || 'Erreur Google'
       setError(message)
       return { success: false, error: message }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const logout = async () => {
@@ -90,7 +114,8 @@ export const useAuth = () => {
     } catch (error) { 
       console.error('Logout error:', error)
     } finally { 
-      storeLogout(); 
+      storeLogout()
+      disconnectSocket()
       setLoading(false) 
     }
   }
@@ -103,7 +128,9 @@ export const useAuth = () => {
     } catch (error) {
       console.error('Forget password error:', error.response?.data)
       return { success: false, error: error.response?.data?.message || 'Email non trouvé' }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const resetPassword = async (email, code, newPassword) => {
@@ -114,13 +141,28 @@ export const useAuth = () => {
     } catch (error) {
       console.error('Reset password error:', error.response?.data)
       return { success: false, error: error.response?.data?.message || 'Erreur de réinitialisation' }
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   return {
-    user, professional, accessToken, refreshToken, isAuthenticated, loading, error,
+    user, 
+    professional, 
+    accessToken, 
+    refreshToken, 
+    isAuthenticated, 
+    loading, 
+    error,
     isProfessional: user?.role === 'professional',
     isUser: user?.role === 'user',
-    login, googleAuth, registerUser, registerPro, verifyOTP, logout, forgetPassword, resetPassword,
+    login, 
+    googleAuth, 
+    registerUser, 
+    registerPro, 
+    verifyOTP, 
+    logout, 
+    forgetPassword, 
+    resetPassword,
   }
 }

@@ -1,8 +1,11 @@
 import { Router } from "express"
 import authMiddleware from "../middlewares/authMiddleware.js"
+import {createReview} from "../controllers/userController/homeController/reviewController.js"
+import { profileUpload } from "../middlewares/uploadMiddleware.js"
 import { getProfile } from "../controllers/userController/profileController/getProfile.js"
 import { updateProfile } from "../controllers/userController/profileController/updateProfile.js"
 import { deleteAccount } from "../controllers/userController/profileController/deleteAccount.js"
+import { uploadUserAvatar } from "../controllers/userController/profileController/uploadAvatar.js"
 import { getHomeData, getNearbyProfessionals } from "../controllers/userController/homeController/getHomeData.js"
 import { 
     getConversations, 
@@ -10,29 +13,35 @@ import {
     markConversationAsRead,
     createConversation,
     sendMessage,
-    getUnreadCount
+    getUnreadCount,
+    uploadMessageImage
 } from "../controllers/messageController/messageController.js"
 
 const router = Router()
 
-// Routes publiques (pas besoin d'auth pour la home et la recherche)
+// Routes publiques
 router.get("/home", getHomeData)
 router.get("/nearby", getNearbyProfessionals)
 
-// Protéger toutes les routes user avec le authMiddleware
+// Routes protégées
 router.use(authMiddleware)
 
-// ── Profile ────────────────────────────────────────────────
+// ─── Avis ───────────────────────────────────────────────────
+router.post("/reviews", createReview)
+
+// ─── Profile ────────────────────────────────────────────────
 router.get("/profile", getProfile)
 router.put("/profile", updateProfile)
 router.delete("/profile", deleteAccount)
+router.post("/upload/avatar", profileUpload.single('avatar'), uploadUserAvatar)
 
-// ── Messages (utilisation du controller unique) ───────────
+// ─── Messages ───────────────────────────────────────────────
 router.get("/conversations", getConversations)
 router.get("/conversations/:conversationId/messages", getMessages)
 router.put("/conversations/:conversationId/read", markConversationAsRead)
 router.post("/conversations", createConversation)
 router.post("/conversations/:conversationId/messages", sendMessage)
 router.get("/messages/unread/count", getUnreadCount)
+router.post("/upload/message-image", authMiddleware, uploadMessageImage)
 
 export default router

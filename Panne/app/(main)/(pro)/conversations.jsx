@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { usePro } from '../../../hooks/usePro'
+import { socketEvents, getSocket } from '../../../services/socketService'
 import { COLORS } from '../../../constants/colors'
 
 export default function ProConversations() {
@@ -20,31 +21,66 @@ export default function ProConversations() {
   const [conversations, setConversations] = useState([])
   const [refreshing, setRefreshing] = useState(false)
   const [unreadTotal, setUnreadTotal] = useState(0)
+  const isMounted = useRef(true)
 
   const loadConversations = async () => {
+    if (!isMounted.current) return
     const result = await getConversations()
-    if (result.success) {
+    if (result.success && isMounted.current) {
       setConversations(result.conversations || [])
     }
   }
 
   const loadUnreadCount = async () => {
+    if (!isMounted.current) return
     const result = await getUnreadCount()
-    if (result.success) {
+    if (result.success && isMounted.current) {
       setUnreadTotal(result.unread_count || 0)
     }
   }
 
+  const refreshData = async () => {
+    await Promise.all([loadConversations(), loadUnreadCount()])
+  }
+
+  // 👂 Écouter les nouveaux messages en temps réel
+  useEffect(() => {
+    isMounted.current = true
+    const socket = getSocket()
+    if (!socket) {
+      console.log('⚠️ Socket non connecté dans ProConversations')
+      return
+    }
+
+    const handleNewMessage = (data) => {
+      console.log('📩 Nouveau message reçu dans liste pro:', data)
+      refreshData()
+    }
+
+    const handleMessageSent = (data) => {
+      console.log('✅ Message envoyé confirmé pro:', data)
+      refreshData()
+    }
+
+    socketEvents.onReceiveMessage(handleNewMessage)
+    socketEvents.onMessageSent(handleMessageSent)
+
+    return () => {
+      isMounted.current = false
+      socketEvents.offReceiveMessage()
+      socketEvents.offMessageSent()
+    }
+  }, [])
+
   useFocusEffect(
     useCallback(() => {
-      loadConversations()
-      loadUnreadCount()
+      refreshData()
     }, [])
   )
 
   const onRefresh = async () => {
     setRefreshing(true)
-    await Promise.all([loadConversations(), loadUnreadCount()])
+    await refreshData()
     setRefreshing(false)
   }
 
@@ -67,18 +103,18 @@ export default function ProConversations() {
   }
 
   const openConversation = (conversation) => {
-  console.log("🔵 ID de la conversation:", conversation.id)
-  console.log("🔵 Conversation complète:", conversation)
-  router.push({
-    pathname: '/(main)/(pro)/conversation/[id]',
-    params: { 
-      id: conversation.id,
-      contactName: conversation.contact_name,
-      contactAvatar: conversation.contact_avatar,
-      contactId: conversation.contact_id
-    }
-  })
-}
+    console.log("🔵 ID de la conversation:", conversation.id)
+    console.log("🔵 Conversation complète:", conversation)
+    router.push({
+      pathname: '/(main)/(pro)/conversation/[id]',
+      params: { 
+        id: conversation.id,
+        contactName: conversation.contact_name,
+        contactAvatar: conversation.contact_avatar,
+        contactId: conversation.contact_id
+      }
+    })
+  }
 
   if (loading && !refreshing && conversations.length === 0) {
     return (

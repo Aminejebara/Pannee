@@ -45,6 +45,17 @@ export const updateProfile = async (req, res) => {
             }
         }
 
+        // ✅ Convertir undefined en null pour MySQL
+        const updateUsername = username !== undefined ? username : null
+        const updatePhone = phone !== undefined ? phone : null
+        const updateAddress = address !== undefined ? address : null
+        const updateCity = city !== undefined ? city : null
+        const updateCountry = country !== undefined ? country : null
+        const updateLat = lat !== undefined ? lat : null
+        const updateLng = lng !== undefined ? lng : null
+        const updatePlaceId = place_id !== undefined ? place_id : null
+        const updateAvatarUrl = avatar_url !== undefined ? avatar_url : null
+
         // Mettre à jour l'utilisateur
         await connection.execute(
             `UPDATE users 
@@ -58,7 +69,8 @@ export const updateProfile = async (req, res) => {
                  place_id = COALESCE(?, place_id),
                  avatar_url = COALESCE(?, avatar_url)
              WHERE id = ?`,
-            [username, phone, address, city, country, lat, lng, place_id, avatar_url, userId]
+            [updateUsername, updatePhone, updateAddress, updateCity, updateCountry, 
+             updateLat, updateLng, updatePlaceId, updateAvatarUrl, userId]
         )
 
         // Récupérer l'utilisateur mis à jour

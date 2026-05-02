@@ -25,7 +25,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const { login, googleAuth, loading, isAuthenticated } = useAuth()
+  const { login, googleAuth, loading, isAuthenticated, user } = useAuth()
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -33,13 +33,18 @@ export default function LoginScreen() {
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   })
 
+  // ✅ Redirection selon le rôle
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
       setTimeout(() => {
-        router.replace('/(main)/(user)')
+        if (user.role === 'professional') {
+          router.replace('/(main)/(pro)')
+        } else {
+          router.replace('/(main)/(user)')
+        }
       }, 100)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, user])
 
   useEffect(() => {
     const handleGoogleResponse = async () => {
@@ -70,12 +75,8 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* Top Navigation */}
-        <View style={styles.header}>
-       
-        </View>
+        <View style={styles.header} />
 
-        {/* LOGO PANNE STYLISÉ */}
         <View style={styles.logoWrapper}>
           <View style={styles.logoIconBg}>
             <Ionicons name="flash" size={32} color={COLORS.dixie[500]} />
@@ -88,7 +89,6 @@ export default function LoginScreen() {
           <Text style={styles.welcomeSubtitle}>Connectez-vous pour gérer vos demandes d'assistance automobile.</Text>
         </View>
 
-        {/* Formulaire Airbnb Style */}
         <View style={styles.inputContainer}>
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>ADRESSE E-MAIL</Text>
@@ -183,7 +183,6 @@ const styles = StyleSheet.create({
   header: { height: 40, justifyContent: 'center', marginBottom: 20 },
   backButton: { width: 40, height: 40, justifyContent: 'center' },
   
-  // STYLE DU LOGO
   logoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -197,7 +196,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    // Petit effet d'ombre pour le logo
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,

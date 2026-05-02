@@ -10,15 +10,49 @@ const useAuthStore = create(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      isLoading: true,           // ← AJOUTÉ
       error: null,
 
       setAuth: (user, professional, accessToken, refreshToken) => set({
-        user, professional: professional || null, accessToken, refreshToken, isAuthenticated: true, error: null
+        user, 
+        professional: professional || null, 
+        accessToken, 
+        refreshToken, 
+        isAuthenticated: true, 
+        isLoading: false,        // ← AJOUTÉ
+        error: null
       }),
-      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken, isAuthenticated: true }),
+      
+      setTokens: (accessToken, refreshToken) => set({ 
+        accessToken, 
+        refreshToken, 
+        isAuthenticated: true,
+        isLoading: false         // ← AJOUTÉ
+      }),
+      
+      setLoading: (isLoading) => set({ isLoading }),  // ← AJOUTÉ
+      
       setError: (error) => set({ error }),
-      logout: () => set({ user: null, professional: null, accessToken: null, refreshToken: null, isAuthenticated: false, error: null }),
-      clearAuth: () => set({ user: null, professional: null, accessToken: null, refreshToken: null, isAuthenticated: false, error: null }),
+      
+      logout: () => set({ 
+        user: null, 
+        professional: null, 
+        accessToken: null, 
+        refreshToken: null, 
+        isAuthenticated: false, 
+        isLoading: false,        // ← AJOUTÉ
+        error: null 
+      }),
+      
+      clearAuth: () => set({ 
+        user: null, 
+        professional: null, 
+        accessToken: null, 
+        refreshToken: null, 
+        isAuthenticated: false, 
+        isLoading: false,        // ← AJOUTÉ
+        error: null 
+      }),
       
       isProfessional: () => get().user?.role === 'professional',
       isUser: () => get().user?.role === 'user',
@@ -29,10 +63,16 @@ const useAuthStore = create(
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        user: state.user, professional: state.professional,
-        accessToken: state.accessToken, refreshToken: state.refreshToken,
+        user: state.user, 
+        professional: state.professional,
+        accessToken: state.accessToken, 
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Quand les données sont chargées, isLoading passe à false
+        state?.setLoading(false)
+      },
     }
   )
 )

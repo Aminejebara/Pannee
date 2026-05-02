@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   View,
   Text,
@@ -17,17 +17,22 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { usePro } from '../../../../hooks/usePro'
+import { useAuth } from '../../../../hooks/useAuth'
+import { socketEvents, getSocket } from '../../../../services/socketService'
 import { COLORS } from '../../../../constants/colors'
 
 export default function ConversationDetail() {
-  const { id, contactName, contactAvatar } = useLocalSearchParams()
-  console.log("🔵 PARAMS reçus:", { id, contactName, contactAvatar })
-  const { getMessages, sendMessage, markConversationAsRead, uploadMessageImage, loading } = usePro()
-  
+  const { id, contactName, contactAvatar, contactId } = useLocalSearchParams()
+  const { user } = useAuth()
+  const { getMessages, markConversationAsRead, uploadMessageImage, loading } = usePro()
+
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
+  const [otherUserTyping, setOtherUserTyping] = useState(false)
   const scrollViewRef = useRef()
+  const typingTimeoutRef = useRef(null)
 
   const loadMessages = async () => {
     const result = await getMessages(id)
@@ -39,6 +44,10 @@ export default function ConversationDetail() {
 
   const markAsRead = async () => {
     await markConversationAsRead(id)
+    const socket = getSocket()
+    if (socket) {
+      socketEvents.markConversationRead({ conversationId: id })
+    }
   }
 
   useFocusEffect(
@@ -48,21 +57,103 @@ export default function ConversationDetail() {
     }, [id])
   )
 
+  useEffect(() => {
+    const socket = getSocket()
+    if (!socket) {
+      console.log('⚠️ Socket non connecté dans ConversationDetail pro')
+      return
+    }
+
+    const handleReceiveMessage = (data) => {
+      console.log('📩 Nouveau message reçu (pro):', data)
+      if (data.conversationId == id) {
+        setMessages(prev => [...prev, data.message])
+        scrollToBottom()
+      }
+    }
+
+    const handleMessageSent = (data) => {
+      console.log('✅ Message envoyé confirmé (pro):', data)
+      if (data.conversationId == id) {
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === data.message.id)
+          if (!exists) {
+            return [...prev, data.message]
+          }
+          return prev
+        })
+        scrollToBottom()
+      }
+    }
+
+    const handleUserTyping = (data) => {
+      if (data.conversationId == id && data.userId != user?.id) {
+        setOtherUserTyping(data.isTyping)
+      }
+    }
+
+    socketEvents.onReceiveMessage(handleReceiveMessage)
+    socketEvents.onMessageSent(handleMessageSent)
+    socketEvents.onUserTyping(handleUserTyping)
+
+    return () => {
+      socketEvents.offReceiveMessage()
+      socketEvents.offMessageSent()
+      socketEvents.offUserTyping()
+    }
+  }, [id, user?.id])
+
   const scrollToBottom = () => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true })
     }, 100)
   }
 
+  const sendMessage = (content, type = 'text', media_url = null) => {
+    return new Promise((resolve, reject) => {
+      const socket = getSocket()
+      if (!socket) {
+        reject(new Error('Socket non connecté'))
+        return
+      }
+
+      const onSent = (data) => {
+        if (data.conversationId == id) {
+          socket.off('message_sent', onSent)
+          resolve(data)
+        }
+      }
+      
+      socket.on('message_sent', onSent)
+
+      socketEvents.sendMessage({
+        conversationId: id,
+        receiverId: contactId,
+        receiverType: 'user',
+        content: content,
+        type: type,
+        media_url: media_url
+      })
+
+      setTimeout(() => {
+        socket.off('message_sent', onSent)
+        reject(new Error('Timeout'))
+      }, 10000)
+    })
+  }
+
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return
     setSending(true)
-    const result = await sendMessage(id, newMessage.trim())
-    if (result.success) {
-      setNewMessage('')
+    const textToSend = newMessage.trim()
+    setNewMessage('')
+    handleTyping(false)
+    
+    try {
+      await sendMessage(textToSend, 'text')
       await loadMessages()
-    } else {
-      Alert.alert('Erreur', result.error || 'Message non envoyé')
+    } catch (error) {
+      Alert.alert('Erreur', error.message || 'Message non envoyé')
     }
     setSending(false)
   }
@@ -70,7 +161,7 @@ export default function ConversationDetail() {
   const pickAndSendImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (status !== 'granted') {
-      Alert.alert('Permission', 'Accès à la galerie nécessaire pour envoyer des images')
+      Alert.alert('Permission', 'Accès à la galerie nécessaire')
       return
     }
 
@@ -85,12 +176,48 @@ export default function ConversationDetail() {
       setSending(true)
       const uploadResult = await uploadMessageImage(result.assets[0].uri)
       if (uploadResult.success) {
-        await sendMessage(id, uploadResult.url, 'image', uploadResult.url)
-        await loadMessages()
-      } else {
-        Alert.alert('Erreur', "Impossible d'envoyer l'image")
+        try {
+          await sendMessage(uploadResult.url, 'image', uploadResult.url)
+          await loadMessages()
+        } catch (error) {
+          Alert.alert('Erreur', "Impossible d'envoyer l'image")
+        }
       }
       setSending(false)
+    }
+  }
+
+  const handleTyping = (typing) => {
+    if (typing !== isTyping) {
+      setIsTyping(typing)
+      const socket = getSocket()
+      if (socket) {
+        socketEvents.typing({
+          conversationId: id,
+          receiverId: contactId,
+          isTyping: typing
+        })
+      }
+    }
+  }
+
+  const onTextChange = (text) => {
+    setNewMessage(text)
+    
+    if (text.length > 0 && !isTyping) {
+      handleTyping(true)
+    }
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+    
+    if (text.length === 0) {
+      handleTyping(false)
+    } else {
+      typingTimeoutRef.current = setTimeout(() => {
+        handleTyping(false)
+      }, 1500)
     }
   }
 
@@ -185,6 +312,9 @@ export default function ConversationDetail() {
             <View style={styles.onlineDot} />
             <Text style={styles.headerStatus}>Client</Text>
           </View>
+          {otherUserTyping && (
+            <Text style={styles.typingIndicator}>En train d'écrire...</Text>
+          )}
         </View>
       </View>
 
@@ -224,7 +354,7 @@ export default function ConversationDetail() {
               placeholder="Écrivez ici..."
               placeholderTextColor={COLORS.gray[400]}
               value={newMessage}
-              onChangeText={setNewMessage}
+              onChangeText={onTextChange}
               multiline
             />
             
@@ -256,6 +386,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50', marginRight: 6 },
   headerStatus: { fontSize: 13, color: COLORS.gray[500] },
+  typingIndicator: { fontSize: 10, color: COLORS.blumine[600], marginTop: 2 },
   messagesContainer: { flex: 1 },
   messagesContent: { paddingHorizontal: 16, paddingVertical: 20 },
   dateHeader: { alignItems: 'center', marginVertical: 20 },
