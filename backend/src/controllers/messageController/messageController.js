@@ -1,16 +1,10 @@
 import { pool } from "../../config/db.js"
 import { messageUpload } from "../../middlewares/uploadMiddleware.js"
 
-// ──────────────────────────────────────────────────────────
-//  CONVERSATIONS
-// ──────────────────────────────────────────────────────────
-
-// Récupérer les conversations (user ou pro selon le rôle)
 export const getConversations = async (req, res) => {
     try {
         const userId = req.user.id
         const userRole = req.user.role
-
         let conversations = []
 
         if (userRole === 'user') {
@@ -78,7 +72,6 @@ export const getConversations = async (req, res) => {
     }
 }
 
-// Récupérer les messages d'une conversation
 export const getMessages = async (req, res) => {
     try {
         const { conversationId } = req.params
@@ -128,7 +121,6 @@ export const getMessages = async (req, res) => {
     }
 }
 
-// Marquer les messages comme lus
 export const markConversationAsRead = async (req, res) => {
     try {
         const { conversationId } = req.params
@@ -151,7 +143,7 @@ export const markConversationAsRead = async (req, res) => {
         if (!hasAccess) {
             return res.status(403).json({ success: false, message: "Accès non autorisé" })
         }
-        
+
         const otherPartyType = userRole === 'user' ? 'professional' : 'user'
         const [result] = await pool.query(`UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_type = ? AND is_read = 0`, [conversationId, otherPartyType])
 
@@ -162,7 +154,6 @@ export const markConversationAsRead = async (req, res) => {
     }
 }
 
-// Créer une nouvelle conversation (user uniquement)
 export const createConversation = async (req, res) => {
     try {
         const { professionalId } = req.body
@@ -190,34 +181,52 @@ export const createConversation = async (req, res) => {
     }
 }
 
-// Envoyer un message
-// Envoyer un message - CORRIGÉ
 export const sendMessage = async (req, res) => {
     try {
-        // ✅ conversationId vient des PARAMS, pas du body !
         const { conversationId } = req.params
         const { content, type = "text", media_url = null } = req.body
         const userId = req.user.id
         const userRole = req.user.role
 
-        console.log("🔵 sendMessage - conversationId:", conversationId)
-        console.log("🔵 sendMessage - content:", content)
+        const io = req.app.locals.io
+
+        console.log("🔵 sendMessage HTTP - conversationId:", conversationId)
+        console.log("🔵 sendMessage HTTP - userRole:", userRole)
 
         if (!conversationId || !content) {
             return res.status(400).json({ success: false, message: "conversationId et content sont requis" })
         }
 
         let hasAccess = false
+        let receiverId = null
+        let receiverType = null
+        let receiverProfessionalId = null
+
         if (userRole === 'user') {
-            const [result] = await pool.query(`SELECT id FROM conversations WHERE id = ? AND user_id = ?`, [conversationId, userId])
-            hasAccess = result.length > 0
+            const [convCheck] = await pool.query(`
+                SELECT c.id, c.professional_id, p.user_id as pro_user_id
+                FROM conversations c
+                JOIN professionals p ON c.professional_id = p.id
+                WHERE c.id = ? AND c.user_id = ?
+            `, [conversationId, userId])
+            hasAccess = convCheck.length > 0
+            if (hasAccess) {
+                receiverId = convCheck[0].pro_user_id
+                receiverType = 'professional'
+                receiverProfessionalId = convCheck[0].professional_id
+            }
         } else {
-            const [result] = await pool.query(`
-                SELECT c.id FROM conversations c
+            const [convCheck] = await pool.query(`
+                SELECT c.id, c.user_id
+                FROM conversations c
                 JOIN professionals p ON c.professional_id = p.id
                 WHERE c.id = ? AND p.user_id = ?
             `, [conversationId, userId])
-            hasAccess = result.length > 0
+            hasAccess = convCheck.length > 0
+            if (hasAccess) {
+                receiverId = convCheck[0].user_id
+                receiverType = 'user'
+            }
         }
 
         if (!hasAccess) {
@@ -234,14 +243,48 @@ export const sendMessage = async (req, res) => {
         await pool.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = ?`, [conversationId])
 
         const [newMessage] = await pool.query(`SELECT * FROM messages WHERE id = ?`, [result.insertId])
+        const messageData = newMessage[0]
 
-        res.status(201).json({ success: true, message: newMessage[0], conversation_id: conversationId })
+        if (io && receiverId) {
+            let receiverRoom = null
+
+            if (receiverType === 'user') {
+                receiverRoom = `user_${receiverId}`
+            } else if (receiverType === 'professional') {
+                // ✅ On utilise directement receiverProfessionalId = professionals.id (pas user_id)
+                receiverRoom = `professional_${receiverProfessionalId}`
+            }
+
+            console.log(`📤 HTTP - Émission vers room: ${receiverRoom} (type: ${receiverType})`)
+
+            if (receiverRoom) {
+                io.to(receiverRoom).emit("receive_message", {
+                    message: messageData,
+                    conversationId: parseInt(conversationId)
+                })
+                console.log(`✅ receive_message émis vers ${receiverRoom}`)
+            } else {
+                console.log("⚠️ receiverRoom est null")
+            }
+
+            // ✅ CORRECTION: suppression de message_sent vers l'expéditeur
+            // L'expéditeur reçoit déjà la confirmation via la réponse HTTP (result.message)
+            // Émettre message_sent créait des doublons côté front
+        } else {
+            console.log("⚠️ io non disponible ou receiverId manquant")
+        }
+
+        res.status(201).json({
+            success: true,
+            message: messageData,
+            conversation_id: conversationId
+        })
     } catch (err) {
         console.error("sendMessage error:", err)
         res.status(500).json({ message: "Erreur serveur" })
     }
 }
-// Compter les messages non lus (CORRIGÉ)
+
 export const getUnreadCount = async (req, res) => {
     try {
         const userId = req.user.id
@@ -292,20 +335,16 @@ export const getUnreadCount = async (req, res) => {
             byConversation = byConvResult
         }
 
-        res.status(200).json({ 
-            success: true, 
-            unread_count: result?.[0]?.unread_count || 0, 
-            by_conversation: byConversation || [] 
+        res.status(200).json({
+            success: true,
+            unread_count: result?.[0]?.unread_count || 0,
+            by_conversation: byConversation || []
         })
     } catch (err) {
         console.error("getUnreadCount error:", err)
         res.status(500).json({ message: "Erreur serveur" })
     }
 }
-
-// ──────────────────────────────────────────────────────────
-//  UPLOAD IMAGE POUR MESSAGES
-// ──────────────────────────────────────────────────────────
 
 export const uploadMessageImage = [
     messageUpload.single('image'),
@@ -321,7 +360,7 @@ export const uploadMessageImage = [
             res.status(200).json({ success: true, message: 'Image uploadée avec succès', data: { url: imageUrl } })
         } catch (error) {
             console.error('Error uploading message image:', error)
-            res.status(500).json({ success: false, message: 'Erreur lors de l\'upload', error: error.message })
+            res.status(500).json({ success: false, message: "Erreur lors de l'upload", error: error.message })
         }
     }
 ]

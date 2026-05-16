@@ -42,7 +42,7 @@ export default function UserLayout() {
 
       {/* Onglet 2: Messages - le dossier existe */}
       <Tabs.Screen
-        name="conversation/index"
+        name="conversation"
         options={{
           title: 'Messages',
           tabBarIcon: ({ color, focused }) => (

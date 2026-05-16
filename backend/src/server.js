@@ -1,3 +1,6 @@
+// FICHIER: server.js (ou index.js à la racine)
+// CORRECTION: Importer et exporter correctement io
+
 import express from "express"
 import cors from "cors"
 import helmet from "helmet"
@@ -34,7 +37,15 @@ app.use("/api/pro", proRoutes)
 
 app.use((req, res) => res.status(404).json({ message: "Route introuvable" }))
 
-const io = initializeSocket(server)
+// Initialiser socket ET récupérer l'instance io
+const 
+ io = initializeSocket(server)
+
+// Rendre io disponible dans les routes (via app.locals)
+app.locals.io = io
+
+// Exporter io pour les contrôleurs
+export { io }
 
 const PORT = process.env.PORT || 5000
 server.listen(PORT, "0.0.0.0", () => {

@@ -1,3 +1,5 @@
+// FICHIER: app/(main)/_layout.jsx
+
 import { useEffect, useState } from 'react'
 import { Redirect, Stack, useSegments } from 'expo-router'
 import useAuthStore from '../../store/useAuthStore'
@@ -27,19 +29,20 @@ export default function MainLayout() {
     return <Redirect href="/(auth)/login" />
   }
 
-  // Vérifier le chemin actuel
   const currentPath = segments[1]
   const expectedPath = user?.role === 'professional' ? '(pro)' : '(user)'
 
-  // Si pas sur le bon chemin, rediriger
-  if (currentPath !== expectedPath) {
+  // ✅ CORRECTION: Permettre l'accès à conversation sans redirection
+  // Si on est dans conversation, ne pas rediriger
+  if (currentPath !== expectedPath && currentPath !== 'conversation') {
     return <Redirect href={`/(main)/${expectedPath}`} />
   }
 
-  // ✅ AFFICHER LE STACK avec le bon groupe
+  // ✅ CORRECTION: Afficher le Stack avec TOUS les screens
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name={expectedPath} />
+      <Stack.Screen name="conversation" />  {/* ← AJOUTER CETTE LIGNE */}
     </Stack>
   )
 }

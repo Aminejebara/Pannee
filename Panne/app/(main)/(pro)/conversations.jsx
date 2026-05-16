@@ -1,90 +1,60 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+// FICHIER: app/(main)/(pro)/conversations.jsx
+// DESCRIPTION: Liste des conversations pour le professionnel
+
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
   Image,
-  Platform
+  SafeAreaView
 } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { usePro } from '../../../hooks/usePro'
-import { socketEvents, getSocket } from '../../../services/socketService'
 import { COLORS } from '../../../constants/colors'
 
 export default function ProConversations() {
-  const { getConversations, getUnreadCount, loading } = usePro()
+  const { getConversations, loading } = usePro()
   const [conversations, setConversations] = useState([])
   const [refreshing, setRefreshing] = useState(false)
-  const [unreadTotal, setUnreadTotal] = useState(0)
-  const isMounted = useRef(true)
 
   const loadConversations = async () => {
-    if (!isMounted.current) return
     const result = await getConversations()
-    if (result.success && isMounted.current) {
+    if (result.success) {
       setConversations(result.conversations || [])
     }
   }
 
-  const loadUnreadCount = async () => {
-    if (!isMounted.current) return
-    const result = await getUnreadCount()
-    if (result.success && isMounted.current) {
-      setUnreadTotal(result.unread_count || 0)
-    }
-  }
-
-  const refreshData = async () => {
-    await Promise.all([loadConversations(), loadUnreadCount()])
-  }
-
-  // 👂 Écouter les nouveaux messages en temps réel
-  useEffect(() => {
-    isMounted.current = true
-    const socket = getSocket()
-    if (!socket) {
-      console.log('⚠️ Socket non connecté dans ProConversations')
-      return
-    }
-
-    const handleNewMessage = (data) => {
-      console.log('📩 Nouveau message reçu dans liste pro:', data)
-      refreshData()
-    }
-
-    const handleMessageSent = (data) => {
-      console.log('✅ Message envoyé confirmé pro:', data)
-      refreshData()
-    }
-
-    socketEvents.onReceiveMessage(handleNewMessage)
-    socketEvents.onMessageSent(handleMessageSent)
-
-    return () => {
-      isMounted.current = false
-      socketEvents.offReceiveMessage()
-      socketEvents.offMessageSent()
-    }
-  }, [])
-
   useFocusEffect(
     useCallback(() => {
-      refreshData()
+      loadConversations()
     }, [])
   )
 
   const onRefresh = async () => {
     setRefreshing(true)
-    await refreshData()
+    await loadConversations()
     setRefreshing(false)
   }
 
-  const formatDate = (dateString) => {
+  const navigateToConversation = (item) => {
+    router.push({
+      pathname: '/(main)/conversation/[id]',
+      params: {
+        id: item.id,
+        contactName: item.contact_name,
+        contactAvatar: item.contact_avatar,
+        contactId: item.contact_id
+      }
+    })
+  }
+
+  const formatTime = (dateString) => {
     if (!dateString) return ''
     const date = new Date(dateString)
     const now = new Date()
@@ -98,151 +68,106 @@ export default function ProConversations() {
     } else if (days < 7) {
       return date.toLocaleDateString('fr-FR', { weekday: 'short' })
     } else {
-      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
     }
   }
 
-  const openConversation = (conversation) => {
-    console.log("🔵 ID de la conversation:", conversation.id)
-    console.log("🔵 Conversation complète:", conversation)
-    router.push({
-      pathname: '/(main)/(pro)/conversation/[id]',
-      params: { 
-        id: conversation.id,
-        contactName: conversation.contact_name,
-        contactAvatar: conversation.contact_avatar,
-        contactId: conversation.contact_id
-      }
-    })
-  }
-
-  if (loading && !refreshing && conversations.length === 0) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color={COLORS.blumine[600]} />
+  const renderItem = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.conversationItem} 
+      onPress={() => navigateToConversation(item)}
+    >
+      <View style={styles.avatarContainer}>
+        {item.contact_avatar ? (
+          <Image source={{ uri: item.contact_avatar }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>
+              {item.contact_name?.charAt(0)?.toUpperCase() || '?'}
+            </Text>
+          </View>
+        )}
+        {item.unread_count > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>
+              {item.unread_count > 99 ? '99+' : item.unread_count}
+            </Text>
+          </View>
+        )}
       </View>
+
+      <View style={styles.contentContainer}>
+        <View style={styles.headerRow}>
+          <Text style={styles.contactName} numberOfLines={1}>
+            {item.contact_name || 'Client'}
+          </Text>
+          <Text style={styles.timeText}>
+            {formatTime(item.last_message_time || item.created_at)}
+          </Text>
+        </View>
+        
+        <Text style={styles.lastMessage} numberOfLines={2}>
+          {item.last_message || 'Nouvelle conversation'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  )
+
+  if (loading && conversations.length === 0) {
+    return (
+      <SafeAreaView style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color={COLORS.blumine[600]} />
+      </SafeAreaView>
     )
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.blumine[600]} />
-      }
-    >
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Messages</Text>
-        <View style={styles.headerRow}>
-            <Text style={styles.subtitle}>Gérez vos échanges clients</Text>
-            {unreadTotal > 0 && (
-                <View style={styles.unreadTag}>
-                    <Text style={styles.unreadTagText}>{unreadTotal} nouveau{unreadTotal > 1 ? 'x' : ''}</Text>
-                </View>
-            )}
-        </View>
+        <Text style={styles.headerTitle}>Messages</Text>
       </View>
 
-      <View style={styles.listContainer}>
-        {conversations.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconCircle}>
-                <Ionicons name="chatbubbles-outline" size={38} color={COLORS.gray[300]} />
-            </View>
-            <Text style={styles.emptyStateTitle}>Aucun message pour l'instant</Text>
-            <Text style={styles.emptyStateText}>Retrouvez ici les demandes et questions de vos futurs clients.</Text>
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={64} color={COLORS.gray[300]} />
+            <Text style={styles.emptyTitle}>Aucun message</Text>
+            <Text style={styles.emptyText}>
+              Commencez une conversation avec un client
+            </Text>
           </View>
-        ) : (
-          conversations.map((conv) => {
-            const hasUnread = conv.unread_count > 0;
-            return (
-              <TouchableOpacity
-                key={conv.id}
-                style={styles.conversationItem}
-                onPress={() => openConversation(conv)}
-                activeOpacity={0.6}
-              >
-                <View style={styles.avatarWrapper}>
-                  {conv.contact_avatar ? (
-                    <Image source={{ uri: conv.contact_avatar }} style={styles.avatarImage} />
-                  ) : (
-                    <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarInitial}>
-                        {conv.contact_name?.charAt(0)?.toUpperCase() || '?'}
-                      </Text>
-                    </View>
-                  )}
-                  {hasUnread && <View style={styles.activeIndicator} />}
-                </View>
-
-                <View style={styles.messageBody}>
-                  <View style={styles.messageHeader}>
-                    <Text style={[styles.contactName, hasUnread && styles.unreadName]} numberOfLines={1}>
-                        {conv.contact_name || 'Client'}
-                    </Text>
-                    <Text style={[styles.timeText, hasUnread && styles.unreadTimeText]}>
-                        {formatDate(conv.last_message_time || conv.created_at)}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.messageFooter}>
-                    <Text style={[styles.lastMessage, hasUnread && styles.unreadLastMessage]} numberOfLines={2}>
-                        {conv.last_message || 'Nouvelle conversation ouverte'}
-                    </Text>
-                    {hasUnread && (
-                         <View style={styles.unreadBadge}>
-                            <Text style={styles.unreadBadgeText}>{conv.unread_count}</Text>
-                         </View>
-                    )}
-                  </View>
-                </View>
-                
-                <Ionicons name="chevron-forward" size={18} color={COLORS.gray[200]} style={{ marginLeft: 8 }} />
-              </TouchableOpacity>
-            )
-          })
-        )}
-      </View>
-    </ScrollView>
+        }
+      />
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  content: { paddingBottom: 60 },
+  container: { flex: 1, backgroundColor: '#F9F9F9' },
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 70 : 40,
-    paddingBottom: 28,
-  },
-  title: { fontSize: 34, fontWeight: '800', color: COLORS.black, letterSpacing: -1 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  subtitle: { fontSize: 15, color: COLORS.gray[500], fontWeight: '500' },
-  unreadTag: { marginLeft: 12, backgroundColor: COLORS.blumine[600], paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  unreadTagText: { color: COLORS.white, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  listContainer: { paddingHorizontal: 24 },
-  conversationItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.gray[200] },
-  avatarWrapper: { position: 'relative', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }, android: { elevation: 3 } }) },
-  avatarImage: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.gray[100] },
-  avatarPlaceholder: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 24, fontWeight: '700', color: COLORS.blumine[600] },
-  activeIndicator: { position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.blumine[600], borderWidth: 3, borderColor: COLORS.white },
-  messageBody: { flex: 1, marginLeft: 16 },
-  messageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  contactName: { fontSize: 17, fontWeight: '600', color: COLORS.gray[800], flex: 1 },
-  unreadName: { color: COLORS.black, fontWeight: '800' },
-  timeText: { fontSize: 12, color: COLORS.gray[400], fontWeight: '400' },
-  unreadTimeText: { color: COLORS.blumine[600], fontWeight: '700' },
-  messageFooter: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  lastMessage: { fontSize: 14, color: COLORS.gray[500], flex: 1, lineHeight: 18 },
-  unreadLastMessage: { color: COLORS.black, fontWeight: '600' },
-  unreadBadge: { backgroundColor: COLORS.blumine[600], minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginLeft: 8, marginTop: 2 },
-  unreadBadgeText: { color: COLORS.white, fontSize: 10, fontWeight: '900' },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
-  emptyIconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: COLORS.gray[50], alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-  emptyStateTitle: { fontSize: 22, fontWeight: '700', color: COLORS.black, marginBottom: 10, textAlign: 'center' },
-  emptyStateText: { fontSize: 16, color: COLORS.gray[400], textAlign: 'center', lineHeight: 24, paddingHorizontal: 30 },
+  header: { paddingHorizontal: 20, paddingVertical: 16, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  headerTitle: { fontSize: 28, fontWeight: '700', color: COLORS.black },
+  listContent: { flexGrow: 1, paddingHorizontal: 16, paddingVertical: 8 },
+  conversationItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', backgroundColor: COLORS.white, borderRadius: 12, marginBottom: 8, paddingHorizontal: 12 },
+  avatarContainer: { marginRight: 12, position: 'relative' },
+  avatar: { width: 56, height: 56, borderRadius: 28 },
+  avatarPlaceholder: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 24, fontWeight: '600', color: COLORS.blumine[600] },
+  unreadBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#FF3B30', borderRadius: 12, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  unreadText: { fontSize: 11, fontWeight: '700', color: COLORS.white },
+  contentContainer: { flex: 1, justifyContent: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  contactName: { fontSize: 16, fontWeight: '600', color: COLORS.black, flex: 1 },
+  timeText: { fontSize: 12, color: COLORS.gray[400], marginLeft: 8 },
+  lastMessage: { fontSize: 14, color: COLORS.gray[500], lineHeight: 20 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
+  emptyTitle: { fontSize: 20, fontWeight: '600', color: COLORS.gray[400], marginTop: 16 },
+  emptyText: { fontSize: 14, color: COLORS.gray[400], textAlign: 'center', marginTop: 8, paddingHorizontal: 40 }
 })
