@@ -210,7 +210,7 @@ export const getHomeData = async (req, res) => {
 // ── Récupérer uniquement les professionnels à proximité (avec pagination) ──
 export const getNearbyProfessionals = async (req, res) => {
     try {
-        const { lat, lng, radius = 10, limit = 20, page = 1 } = req.query;
+        const { lat, lng, radius = 10, limit = 20, page = 1, category_id } = req.query;
         const offset = (page - 1) * limit;
 
         if (!lat || !lng) {
@@ -220,10 +220,29 @@ export const getNearbyProfessionals = async (req, res) => {
             });
         }
 
+        // Construction de la requête selon si category_id est présent ou non
+        let categoryJoin = '';
+        let categoryFilter = '';
+        let countParams = [];
+        let prosParams = [];
+
+        if (category_id) {
+            // Avec filtre catégorie (many-to-many)
+            categoryJoin = `INNER JOIN professional_categories pc ON p.id = pc.professional_id`;
+            categoryFilter = ` AND pc.category_id = ?`;
+            countParams = [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius), parseInt(category_id)];
+            prosParams = [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseInt(category_id), parseFloat(radius), parseInt(limit), offset];
+        } else {
+            // Sans filtre catégorie
+            countParams = [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius)];
+            prosParams = [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius), parseInt(limit), offset];
+        }
+
         // Compter le nombre total de pros dans le rayon
         const [countResult] = await pool.query(`
-            SELECT COUNT(*) as total
+            SELECT COUNT(DISTINCT p.id) as total
             FROM professionals p
+            ${categoryJoin}
             WHERE p.status = 'active' 
                 AND p.lat IS NOT NULL 
                 AND p.lng IS NOT NULL
@@ -236,7 +255,8 @@ export const getNearbyProfessionals = async (req, res) => {
                         sin(radians(?)) * sin(radians(p.lat))
                     )
                 ) <= ?
-        `, [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius)]);
+                ${categoryFilter}
+        `, countParams);
 
         // Récupérer les pros avec distance
         const [professionals] = await pool.query(`
@@ -262,15 +282,17 @@ export const getNearbyProfessionals = async (req, res) => {
                 ) as distance_km
             FROM professionals p
             JOIN users u ON p.user_id = u.id
+            ${categoryJoin}
             WHERE p.status = 'active' 
                 AND p.lat IS NOT NULL 
                 AND p.lng IS NOT NULL
                 AND p.lat != 0
                 AND p.lng != 0
+                ${categoryFilter}
             HAVING distance_km <= ?
             ORDER BY distance_km ASC
             LIMIT ? OFFSET ?
-        `, [parseFloat(lat), parseFloat(lng), parseFloat(lat), parseFloat(radius), parseInt(limit), offset]);
+        `, prosParams);
 
         res.status(200).json({
             success: true,
@@ -294,6 +316,44 @@ export const getNearbyProfessionals = async (req, res) => {
             success: false, 
             message: "Erreur lors de la récupération des professionnels à proximité",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+// Route pour créer un avis
+
+
+
+// Mettre à jour la position de l'utilisateur
+export const updateUserLocation = async (req, res) => {
+    try {
+        const { lat, lng, address, city, country } = req.body;
+        const userId = req.user.id; // Après authMiddleware
+
+        if (!lat || !lng) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Les coordonnées lat et lng sont requises" 
+            });
+        }
+
+        await pool.query(
+            `UPDATE users 
+             SET lat = ?, lng = ?, address = ?, city = ?, country = ?
+             WHERE id = ?`,
+            [parseFloat(lat), parseFloat(lng), address || null, city || null, country || null, userId]
+        );
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Position mise à jour avec succès" 
+        });
+    } catch (error) {
+        console.error("❌ [updateUserLocation] Erreur :", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Erreur lors de la mise à jour de la position" 
         });
     }
 };

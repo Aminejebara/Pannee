@@ -91,6 +91,12 @@ export default function UserLayout() {
         name="components"
         options={{ href: null }}
       />
+
+      <Tabs.Screen
+        name="category/[id]"
+        options={{ href: null }}
+      />
+
       
       
     </Tabs>

@@ -10,7 +10,9 @@ export const connectSocket = () => {
     return null
   }
 
-  const API_URL = process.env.EXPO_PUBLIC_API_URL?.replace('/api', '') || 'http://172.20.10.4:5000'
+  const API_URL ="https://192.168.1.13:5000"
+  // const API_URL = "http://192.168.1.81:5000"
+  // const API_URL = "http://213.32.21.153:5000"
 
   if (socket) {
     console.log('🔌 Socket déjà connecté')

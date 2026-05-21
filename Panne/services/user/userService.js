@@ -43,10 +43,17 @@ export const userService = {
     return response.data
   },
   
-  async getNearbyProfessionals(lat, lng, radius = 10, page = 1, limit = 20) {
+  // ✅ MODIFIÉ : Ajout du paramètre category_id
+  async getNearbyProfessionals(lat, lng, radius = 10, page = 1, limit = 20, category_id = null) {
     const response = await api.get('/user/nearby', {
-      params: { lat, lng, radius, page, limit }
+      params: { lat, lng, radius, page, limit, category_id }
     })
+    return response.data
+  },
+  
+  // ✅ NOUVEAU : Mettre à jour la position de l'utilisateur
+  async updateUserLocation(lat, lng, address = null, city = null, country = null) {
+    const response = await api.put('/user/location', { lat, lng, address, city, country })
     return response.data
   },
   
@@ -96,8 +103,6 @@ export const userService = {
       type: 'image/jpeg',
     });
 
-    
-
     const response = await api.post('/user/upload/message-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -107,12 +112,12 @@ export const userService = {
   },
 
   // ─── Avis ───────────────────────────────────────────────────
-async createReview(professionalId, rating, comment) {
-  const response = await api.post('/user/reviews', {
-    professional_id: professionalId,
-    rating: rating,
-    comment: comment
-  })
-  return response.data
-},
+  async createReview(professionalId, rating, comment) {
+    const response = await api.post('/user/reviews', {
+      professional_id: professionalId,
+      rating: rating,
+      comment: comment
+    })
+    return response.data
+  },
 }

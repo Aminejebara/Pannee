@@ -10,10 +10,14 @@ export default function CategoriesSection({ categories }) {
   const renderCategory = ({ item }) => (
     <TouchableOpacity 
       style={styles.categoryCard}
-      onPress={() => router.push(`/(main)/(user)/professionals?category=${item.id}`)}
+      onPress={() => router.push(`/(main)/(user)/category/${item.id}?name=${encodeURIComponent(item.name)}`)}
     >
       <View style={styles.categoryIcon}>
-        <Ionicons name="car-outline" size={24} color={COLORS.blumine[600]} />
+        <Ionicons 
+          name={item.icon || 'business-outline'}  // ← Utilise l'icône de la BASE !
+          size={24} 
+          color={COLORS.blumine[600]} 
+        />
       </View>
       <Text style={styles.categoryName}>{item.name}</Text>
     </TouchableOpacity>

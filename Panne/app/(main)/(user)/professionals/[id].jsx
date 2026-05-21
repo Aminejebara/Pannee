@@ -76,7 +76,7 @@ export default function ProfessionalDetail() {
     const result = await createConversation(id)
     if (result.success) {
       router.push({
-        pathname: '/(main)/(user)/conversation/[id]',
+        pathname: '/(main)/conversation/[id]',
         params: { id: result.conversationId, contactName: professional?.business_name, professionalId: id }
       })
     } else {
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   description: { fontSize: 15, color: COLORS.gray[600], lineHeight: 22 },
 
   categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryBadge: { backgroundColor: COLORS.blumine[50], paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  categoryBadge: { backgroundColor: "#ffffff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   categoryBadgeText: { color: COLORS.blumine[600], fontSize: 13, fontWeight: '500' },
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },

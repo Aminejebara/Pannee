@@ -44,7 +44,7 @@ export default function UserHome() {
     const result = await createConversation(professionalId)
     if (result.success) {
       router.push({
-        pathname: '/(main)/(user)/conversation/[id]',
+        pathname: '/(main)/conversation/[id]',
         params: { id: result.conversationId, contactName: professionalName, professionalId: professionalId }
       })
     } else {

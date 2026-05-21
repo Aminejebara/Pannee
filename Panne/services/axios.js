@@ -1,12 +1,12 @@
 import axios from 'axios'
 import useAuthStore from '../store/useAuthStore'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL 
+const API_URL = "https://panneapi.duckdns.org/api" 
 
 console.log('🔵 API_URL:', API_URL)
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL:"http://192.168.1.13:5000/api",
   timeout: 30000, // Augmenté à 30 secondes pour debug
   headers: { 'Content-Type': 'application/json' },
 })

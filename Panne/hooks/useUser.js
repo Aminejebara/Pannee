@@ -54,17 +54,7 @@ export const useUser = () => {
     }
   }
 
-  const getNearbyProfessionals = async (lat, lng, radius = 10, page = 1, limit = 20) => {
-    setLoading(true)
-    try {
-      const data = await userService.getNearbyProfessionals(lat, lng, radius, page, limit)
-      return { success: true, data: data.data, pagination: data.pagination, location: data.location }
-    } catch (error) {
-      return { success: false, error: error.response?.data?.message }
-    } finally {
-      setLoading(false)
-    }
-  }
+  
 
   // ─── Messages ────────────────────────────────────────────
   const getConversations = async () => {
@@ -186,6 +176,32 @@ const createReview = async (professionalId, rating, comment) => {
   }
 }
 
+
+const getNearbyProfessionals = async (lat, lng, radius = 10, page = 1, limit = 20, category_id = null) => {
+  setLoading(true)
+  try {
+    const data = await userService.getNearbyProfessionals(lat, lng, radius, page, limit, category_id)
+    return { success: true, data: data.data, pagination: data.pagination, location: data.location }
+  } catch (error) {
+    return { success: false, error: error.response?.data?.message }
+  } finally {
+    setLoading(false)
+  }
+}
+
+// AJOUTER cette nouvelle fonction dans useUser.js
+const updateUserLocation = async (lat, lng, address = null, city = null, country = null) => {
+  setLoading(true)
+  try {
+    const data = await userService.updateUserLocation(lat, lng, address, city, country)
+    return { success: true, message: data.message }
+  } catch (error) {
+    return { success: false, error: error.response?.data?.message }
+  } finally {
+    setLoading(false)
+  }
+}
+
   return {
     loading,
     // Profile
@@ -207,5 +223,7 @@ const createReview = async (professionalId, rating, comment) => {
     // Professional
     getProfessionalById , 
     createReview,
+    updateUserLocation,
+
   }
 }

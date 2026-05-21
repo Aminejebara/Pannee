@@ -38,8 +38,7 @@ app.use("/api/pro", proRoutes)
 app.use((req, res) => res.status(404).json({ message: "Route introuvable" }))
 
 // Initialiser socket ET récupérer l'instance io
-const 
- io = initializeSocket(server)
+const io = initializeSocket(server)
 
 // Rendre io disponible dans les routes (via app.locals)
 app.locals.io = io

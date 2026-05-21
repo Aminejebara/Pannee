@@ -6,7 +6,7 @@ import { getProfile } from "../controllers/userController/profileController/getP
 import { updateProfile } from "../controllers/userController/profileController/updateProfile.js"
 import { deleteAccount } from "../controllers/userController/profileController/deleteAccount.js"
 import { uploadUserAvatar } from "../controllers/userController/profileController/uploadAvatar.js"
-import { getHomeData, getNearbyProfessionals } from "../controllers/userController/homeController/getHomeData.js"
+import { getHomeData, getNearbyProfessionals , updateUserLocation} from "../controllers/userController/homeController/getHomeData.js"
 import { 
     getConversations, 
     getMessages, 
@@ -43,5 +43,7 @@ router.post("/conversations", createConversation)
 router.post("/conversations/:conversationId/messages", sendMessage)
 router.get("/messages/unread/count", getUnreadCount)
 router.post("/upload/message-image", authMiddleware, uploadMessageImage)
+
+router.put("/location", updateUserLocation)
 
 export default router
