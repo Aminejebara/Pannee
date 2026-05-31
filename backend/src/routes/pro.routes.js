@@ -7,7 +7,8 @@ import {
     deleteProfileProData, 
     getAvailableCategories,
     uploadProAvatar ,
-    getProReviews 
+    getProReviews ,
+    updateProLocation
 } from "../controllers/proController/profileproController/getProfileProData.js"
 import { 
     getConversations, 
@@ -54,5 +55,8 @@ router.get("/messages/unread/count", getUnreadCount)
 
 // ─── Upload image pour messages ─────────────────────────────
 router.post("/upload/message-image", authMiddleware, uploadMessageImage)
+
+
+router.put("/profile/:professionalId/location", authMiddleware, updateProLocation)
 
 export default router

@@ -74,6 +74,12 @@ export const proService = {
     })
     return response.data
   },
+
+  // Dans services/pro/proService.js
+updateLocation: async (professionalId, locationData) => {
+  const response = await api.put(`/pro/profile/${professionalId}/location`, locationData)
+  return response.data
+},
   
   async markConversationAsRead(conversationId) {
     const response = await api.put(`/pro/conversations/${conversationId}/read`)
@@ -93,6 +99,7 @@ export const proService = {
       name: 'image.jpg',
       type: 'image/jpeg',
     });
+
     
 
     const response = await api.post('/pro/upload/message-image', formData, {

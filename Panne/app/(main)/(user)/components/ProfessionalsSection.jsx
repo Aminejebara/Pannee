@@ -39,7 +39,7 @@ export default function ProfessionalsSection({ title, professionals, onContact, 
         </View>
       </TouchableOpacity>
       
-      <TouchableOpacity style={styles.contactButton} onPress={() => onContact(item.id, item.business_name)}>
+      <TouchableOpacity style={styles.contactButton} onPress={() => onContact(item.id, item.business_name ,item.avatar_url)}>
         <Ionicons name="chatbubble-outline" size={14} color={COLORS.white} />
         <Text style={styles.contactButtonText}>Contacter</Text>
       </TouchableOpacity>
@@ -50,7 +50,7 @@ export default function ProfessionalsSection({ title, professionals, onContact, 
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        {seeAllRoute && <TouchableOpacity onPress={seeAllRoute}><Text style={styles.viewAllText}>Voir tout</Text></TouchableOpacity>}
+        
       </View>
       <FlatList
         data={professionals.slice(0, 5)}
@@ -86,8 +86,20 @@ const styles = StyleSheet.create({
   proCardContent: { padding: 12 },
   proAvatar: { position: 'relative', width: 60, height: 60, borderRadius: 30, marginBottom: 8, alignSelf: 'center' },
   avatarImage: { width: 60, height: 60, borderRadius: 30 },
-  avatarPlaceholder: { width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.blumine[100], alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 24, fontWeight: '700', color: COLORS.blumine[600] },
+  avatarPlaceholder: { 
+  width: 60, 
+  height: 60, 
+  borderRadius: 30, 
+  backgroundColor: COLORS.blumine[500], // Fond bleu foncé
+  alignItems: 'center', 
+  justifyContent: 'center' 
+},
+avatarText: { 
+  fontSize: 24, 
+  fontWeight: '700', 
+  color: COLORS.white, // Texte BLANC - bien visible !
+  textTransform: 'uppercase'
+},
   featuredBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: COLORS.dixie[500], width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.white },
   proInfo: { alignItems: 'center' },
   proName: { fontSize: 14, fontWeight: '600', color: COLORS.black, textAlign: 'center', marginBottom: 4 },

@@ -49,7 +49,8 @@ export default function ProConversations() {
         id: item.id,
         contactName: item.contact_name,
         contactAvatar: item.contact_avatar,
-        contactId: item.contact_id
+        contactPhone: item.contact_phone,
+        contactId: item.contact_id,
       }
     })
   }
@@ -205,7 +206,7 @@ const styles = StyleSheet.create({
     width: 52, 
     height: 52, 
     borderRadius: 26, 
-    backgroundColor: COLORS.blumine[50], 
+    backgroundColor: '#F7F7F7', 
     alignItems: 'center', 
     justifyContent: 'center' 
   },

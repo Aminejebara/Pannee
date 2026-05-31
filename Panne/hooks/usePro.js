@@ -164,6 +164,21 @@ export const usePro = () => {
   }
 }
 
+
+
+// ─── Localisation ─────────────────────────────────────────
+const updateProLocation = async (professionalId, lat, lng, address, city, country) => {
+  setLoading(true)
+  try {
+    const data = await proService.updateLocation(professionalId, { lat, lng, address, city, country })
+    return { success: true, message: data.message, location: data.location }
+  } catch (error) {
+    return { success: false, error: error.response?.data?.message }
+  } finally {
+    setLoading(false)
+  }
+}
+
   return { 
     loading, 
     // Profile
@@ -183,6 +198,8 @@ export const usePro = () => {
     markConversationAsRead,
     getUnreadCount,
     uploadMessageImage,
-    getReviews
+    getReviews,
+    // Localisation
+    updateProLocation
   }
 }

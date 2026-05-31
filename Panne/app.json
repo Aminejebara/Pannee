@@ -11,7 +11,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aminebenjebara.panne"
+      "bundleIdentifier": "com.aminebenjebara.panne",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAmnxE-yT8o9qhOUyWfPfSE6S1vgO8DrjI"
+      }
     },
     "android": {
       "usesCleartextTraffic": true,
@@ -23,7 +26,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.aminebenjebara.panne"
+      "package": "com.aminebenjebara.panne",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAmnxE-yT8o9qhOUyWfPfSE6S1vgO8DrjI"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -44,8 +52,8 @@
         }
       ],
       "expo-web-browser",
-    
-    
+      "@react-native-google-signin/google-signin",
+      "expo-build-properties"
     ],
     "experiments": {
       "typedRoutes": true,

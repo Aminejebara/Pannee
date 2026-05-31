@@ -49,7 +49,7 @@ export const getConversations = async (req, res) => {
                     u.username as contact_name,
                     u.avatar_url as contact_avatar,
                     u.email,
-                    u.phone,
+                    u.phone as contact_phone,
                     (
                         SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
                     ) as last_message,

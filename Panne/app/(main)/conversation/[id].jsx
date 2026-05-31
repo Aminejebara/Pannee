@@ -450,7 +450,7 @@ export default function ConversationDetail() {
 
         {/* Bouton appel */}
         <TouchableOpacity onPress={handleCall} style={styles.callButton} activeOpacity={0.7}>
-          <Ionicons name="call" size={20} color={contactPhone ? COLORS.blumine[600] : COLORS.gray[300]} />
+          <Ionicons name="call" size={20} color={COLORS.dixie[50]} />
         </TouchableOpacity>
       </View>
 
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 4 },
   headerAvatar: { width: 38, height: 38, borderRadius: 19 },
   headerAvatarPlaceholder: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
-  headerAvatarText: { fontSize: 15, fontWeight: '700', color: COLORS.blumine[600] },
+  headerAvatarText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   headerInfo: { flex: 1, marginLeft: 10 },
   headerName: { fontSize: 16, fontWeight: '600', color: '#000' },
   headerPhone: { fontSize: 12, color: COLORS.gray[400], marginTop: 1 },

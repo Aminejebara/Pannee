@@ -49,6 +49,7 @@ export default function UserConversations() {
         id: item.id,
         contactName: item.contact_name,
         contactAvatar: item.contact_avatar,
+        contactPhone: item.contact_phone,  
         professionalId: item.professional_id
       }
     })
@@ -202,18 +203,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7F7F7'
   },
   avatarPlaceholder: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: 26, 
-    backgroundColor: COLORS.blumine[50], 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  avatarText: { 
-    fontSize: 20, 
-    fontWeight: '600', 
-    color: COLORS.blumine[600] 
-  },
+  width: 60, 
+  height: 60, 
+  borderRadius: 30, 
+  backgroundColor: COLORS.blumine[500], // Fond bleu foncé
+  alignItems: 'center', 
+  justifyContent: 'center' 
+},
+avatarText: { 
+  fontSize: 24, 
+  fontWeight: '700', 
+  color: COLORS.white, // Texte BLANC - bien visible !
+  textTransform: 'uppercase'
+},
   unreadDot: { 
     position: 'absolute', 
     top: 0, 

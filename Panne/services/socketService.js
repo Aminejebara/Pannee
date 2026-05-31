@@ -10,7 +10,7 @@ export const connectSocket = () => {
     return null
   }
 
-  const API_URL ="https://192.168.1.13:5000"
+  const API_URL ="https://panneapi.duckdns.org/api"
   // const API_URL = "http://192.168.1.81:5000"
   // const API_URL = "http://213.32.21.153:5000"
 

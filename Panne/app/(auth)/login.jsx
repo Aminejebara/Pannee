@@ -9,7 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet
+  StyleSheet,
+  Image 
 } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,6 +18,7 @@ import * as WebBrowser from 'expo-web-browser'
 import * as Google from 'expo-auth-session/providers/google'
 import { useAuth } from '../../hooks/useAuth'
 import { COLORS } from '../../constants/colors'
+import { GOOGLE_OAUTH } from '../../constants/config'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -27,13 +29,17 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const { login, googleAuth, loading, isAuthenticated, user } = useAuth()
 
+  // ✅ Plus besoin de redirectUri, les clients Android/iOS gèrent tout seuls
   const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  })
+    androidClientId: GOOGLE_OAUTH.androidClientId,
+    iosClientId: GOOGLE_OAUTH.iosClientId,
+  });
 
-  // ✅ Redirection selon le rôle
+  const handleGoogleLogin = async () => {
+    console.log('🔍 Redirect URI utilisée:', request?.redirectUri)
+    await promptAsync()
+  }
+
   useEffect(() => {
     if (isAuthenticated && user) {
       setTimeout(() => {
@@ -78,9 +84,11 @@ export default function LoginScreen() {
         <View style={styles.header} />
 
         <View style={styles.logoWrapper}>
-          <View style={styles.logoIconBg}>
-            <Ionicons name="flash" size={32} color={COLORS.dixie[500]} />
-          </View>
+          <Image 
+            source={require('../../assets/icons/icon.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.logoText}>Panne<Text style={{color: COLORS.dixie[500]}}>.</Text></Text>
         </View>
 
@@ -131,7 +139,7 @@ export default function LoginScreen() {
 
         <TouchableOpacity 
           style={[styles.googleButton, googleLoading && { opacity: 0.7 }]}
-          onPress={() => promptAsync()}
+          onPress={handleGoogleLogin}
           disabled={googleLoading || !request}
         >
           {googleLoading ? (
@@ -207,6 +215,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.blumine[950],
     letterSpacing: -1,
+  },
+  logoImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 16,
+    backgroundColor: COLORS.blumine[950],
+    padding: 8,
   },
 
   welcomeSection: { marginBottom: 32 },

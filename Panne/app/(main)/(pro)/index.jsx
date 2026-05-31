@@ -141,12 +141,7 @@ export default function ProDashboard() {
               icon="person-outline"
               onPress={() => router.push('/(main)/(pro)/profile')}
             />
-            <ActionCard 
-              title="Planning" 
-              subtitle="Disponibilités"
-              icon="calendar-outline"
-              onPress={() => {}}
-            />
+          
             <ActionCard 
               title="Mes Avis" 
               subtitle={`${ratingValue} (${ratingCount} avis)`}

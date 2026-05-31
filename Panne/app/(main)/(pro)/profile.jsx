@@ -15,6 +15,7 @@ import {
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePro } from '../../../hooks/usePro'
 import { COLORS } from '../../../constants/colors'
@@ -34,7 +35,9 @@ export default function ProProfile() {
     city: '',
     country: '',
     phone: '',
-    email: ''
+    email: '',
+    lat: null,
+    lng: null
   })
   const [localAvatar, setLocalAvatar] = useState(null)
 
@@ -50,7 +53,9 @@ export default function ProProfile() {
           city: pro.city || '',
           country: pro.country || '',
           phone: pro.phone || '',
-          email: pro.email || ''
+          email: pro.email || '',
+          lat: pro.lat || null,
+          lng: pro.lng || null
         })
         setLocalAvatar(pro.avatar_url)
       }
@@ -91,6 +96,68 @@ export default function ProProfile() {
     })
   }
 
+  // ─── Récupération de la position actuelle ─────────────────
+  const getCurrentLocation = async () => {
+    try {
+      // Demander la permission
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', 'Nous avons besoin de votre position pour géolocaliser votre entreprise')
+        return null
+      }
+
+      // Récupérer la position
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High
+      })
+
+      // Récupérer l'adresse à partir des coordonnées
+      const [addressResult] = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      })
+
+      return {
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+        address: addressResult?.street || addressResult?.name || '',
+        city: addressResult?.city || addressResult?.subregion || '',
+        country: addressResult?.country || ''
+      }
+    } catch (error) {
+      console.error('Erreur de localisation:', error)
+      Alert.alert('Erreur', 'Impossible de récupérer votre position')
+      return null
+    }
+  }
+
+  // ─── Mise à jour de la localisation ───────────────────────
+  const handleUpdateLocation = async () => {
+    Alert.alert(
+      'Mettre à jour la position',
+      'Voulez-vous utiliser votre position actuelle pour la localisation de votre entreprise ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Oui', 
+          onPress: async () => {
+            const location = await getCurrentLocation()
+            if (location) {
+              // Mettre à jour les champs du formulaire
+              updateField('address', location.address)
+              updateField('city', location.city)
+              updateField('country', location.country)
+              updateField('lat', location.lat)
+              updateField('lng', location.lng)
+              
+              Alert.alert('Succès', 'Position récupérée ! N\'oubliez pas de sauvegarder votre profil.')
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const handleSave = async () => {
     if (!professional?.id) return
     const dataToSend = {
@@ -99,6 +166,8 @@ export default function ProProfile() {
       address: formData.address || "",
       city: formData.city || "",
       country: formData.country || "",
+      lat: formData.lat || null,
+      lng: formData.lng || null,
       categoryIds: selectedCategories.map(cat => cat.id)
     }
     const result = await updateProfile(professional.id, dataToSend)
@@ -175,7 +244,6 @@ export default function ProProfile() {
                 </Text>
               </View>
             )}
-            {/* Gardé le badge caméra comme demandé */}
             <View style={styles.cameraBadge}>
               <Ionicons name="camera" size={16} color={COLORS.white} />
             </View>
@@ -247,7 +315,7 @@ export default function ProProfile() {
             )}
         </View>
 
-        {/* SECTION CONTACT */}
+        {/* SECTION CONTACT & LOCALISATION */}
         <Text style={styles.airTitle}>Contact & Localisation</Text>
         <View style={styles.airCard}>
           <AirItem label="Email professionnel" value={user?.email} isEditing={false} />
@@ -258,6 +326,25 @@ export default function ProProfile() {
             onChangeText={(v) => updateField('phone', v)}
             keyboardType="phone-pad"
           />
+          
+          {/* Bouton de géolocalisation - apparaît seulement en mode édition */}
+         {isEditing && (
+  <>
+    <TouchableOpacity style={styles.locationButton} onPress={handleUpdateLocation}>
+      <Ionicons name="location-outline" size={20} color={COLORS.white} />
+      <Text style={styles.locationButtonText}>Utiliser ma position actuelle</Text>
+    </TouchableOpacity>
+    
+    {/* Message explicatif */}
+    <View style={styles.locationInfoBox}>
+      <Ionicons name="information-circle-outline" size={18} color={COLORS.blumine[600]} />
+      <Text style={styles.locationInfoText}>
+        Cette position permettra à vos clients de vous localiser facilement sur la carte et de trouver votre atelier.
+      </Text>
+    </View>
+  </>
+)}
+          
           <AirItem 
             label="Adresse complète" 
             value={formData.address} 
@@ -415,5 +502,40 @@ const styles = StyleSheet.create({
   noCategoriesText: { fontSize: 14, color: COLORS.gray[400], fontStyle: 'italic' },
 
   airLogout: { marginTop: 48, paddingVertical: 12, alignSelf: 'flex-start' },
-  airLogoutText: { color: COLORS.black, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' }
+  airLogoutText: { color: COLORS.black, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' },
+
+  // Nouveaux styles pour le bouton de localisation
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.blumine[600],
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginVertical: 12,
+    gap: 8
+  },
+  locationButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: 14
+  },
+  locationInfoBox: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  backgroundColor: COLORS.white,  // Fond blanc
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 12,
+  gap: 10,
+  borderWidth: 1,
+  borderColor: COLORS.gray[300]  // Bordure grise
+},
+locationInfoText: {
+  flex: 1,
+  fontSize: 12,
+  color: COLORS.gray[800],  // Presque noir
+  lineHeight: 18,
+  fontWeight: '400'
+}
 })

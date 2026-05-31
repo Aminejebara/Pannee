@@ -454,6 +454,63 @@ const getProReviews = async (req, res) => {
 };
 
 
+// ── UPDATE LOCATION ONLY ───────────────────────────────────
+const updateProLocation = async (req, res) => {
+    let connection;
+    try {
+        const { professionalId } = req.params;
+        const userId = req.user?.id;
+        const { lat, lng, address, city, country } = req.body;
+
+        connection = await pool.getConnection();
+
+        const [existingPro] = await connection.execute(
+            'SELECT id, user_id FROM professionals WHERE id = ?',
+            [professionalId]
+        );
+
+        if (!existingPro || existingPro.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Professional not found',
+            });
+        }
+
+        if (existingPro[0].user_id !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized',
+            });
+        }
+
+        await connection.execute(
+            `
+            UPDATE professionals 
+            SET lat = ?, lng = ?, address = ?, city = ?, country = ?, updated_at = NOW()
+            WHERE id = ?
+            `,
+            [lat || null, lng || null, address || null, city || null, country || null, professionalId]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Location updated successfully',
+            location: { lat, lng, address, city, country }
+        });
+        
+    } catch (error) {
+        console.error('Error updating location:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error updating location',
+            error: error.message,
+        });
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+
 
 export { 
     getProfileProData, 
@@ -461,5 +518,6 @@ export {
     deleteProfileProData, 
     getAvailableCategories,
     uploadProAvatar ,
-    getProReviews
+    getProReviews ,
+    updateProLocation
 };

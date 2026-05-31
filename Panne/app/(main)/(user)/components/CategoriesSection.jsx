@@ -27,7 +27,7 @@ export default function CategoriesSection({ categories }) {
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Catégories</Text>
-        <TouchableOpacity><Text style={styles.viewAllText}>Voir tout</Text></TouchableOpacity>
+        
       </View>
       <FlatList
         data={categories}

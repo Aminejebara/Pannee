@@ -73,16 +73,21 @@ export default function ProfessionalDetail() {
   }
 
   const handleContact = async () => {
-    const result = await createConversation(id)
-    if (result.success) {
-      router.push({
-        pathname: '/(main)/conversation/[id]',
-        params: { id: result.conversationId, contactName: professional?.business_name, professionalId: id }
-      })
-    } else {
-      Alert.alert('Erreur', 'Impossible de contacter le professionnel')
-    }
+  const result = await createConversation(id)
+  if (result.success) {
+    router.push({
+      pathname: '/conversation/[id]',  // Change le chemin (enlève (main))
+      params: { 
+        id: result.conversationId, 
+        contactName: professional?.business_name,
+        contactAvatar: professional?.avatar_url,  // ✅ AJOUTE CETTE LIGNE
+        professionalId: id 
+      }
+    })
+  } else {
+    Alert.alert('Erreur', 'Impossible de contacter le professionnel')
   }
+}
 
   const handleCall = () => {
     professional?.phone ? Linking.openURL(`tel:${professional.phone}`) : Alert.alert('Info', 'Numéro indisponible')
@@ -326,8 +331,8 @@ const styles = StyleSheet.create({
   profileSection: { alignItems: 'center', marginTop: -50, paddingHorizontal: 20 },
   avatarContainer: { marginBottom: 10 },
   avatarImage: { width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: COLORS.white },
-  avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.blumine[100], justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: COLORS.white },
-  avatarText: { fontSize: 32, fontWeight: 'bold', color: COLORS.blumine[600] },
+  avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.blumine[500], justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: COLORS.white },
+  avatarText: { fontSize: 32, fontWeight: 'bold', color: '#ffffff' },
   businessName: { fontSize: 22, fontWeight: 'bold', color: COLORS.black, textAlign: 'center' },
   
   ratingSummary: { flexDirection: 'row', alignItems: 'center', gap: 5, marginVertical: 10 },
