@@ -1,21 +1,14 @@
 import React, { useState, useCallback } from 'react'
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  StyleSheet,
-  Platform,
-  Image
+  View, Text, ScrollView, TouchableOpacity, TextInput,
+  ActivityIndicator, Alert, RefreshControl, StyleSheet,
+  Platform, Image
 } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
+import * as FileSystem from 'expo-file-system'        // ✅ ajouté ici
 import { useAuth } from '../../../hooks/useAuth'
 import { usePro } from '../../../hooks/usePro'
 import { COLORS } from '../../../constants/colors'
@@ -29,15 +22,8 @@ export default function ProProfile() {
   const [allCategories, setAllCategories] = useState([])
   const [selectedCategories, setSelectedCategories] = useState([])
   const [formData, setFormData] = useState({
-    business_name: '',
-    description: '',
-    address: '',
-    city: '',
-    country: '',
-    phone: '',
-    email: '',
-    lat: null,
-    lng: null
+    business_name: '', description: '', address: '',
+    city: '', country: '', phone: '', email: '', lat: null, lng: null
   })
   const [localAvatar, setLocalAvatar] = useState(null)
 
@@ -57,7 +43,8 @@ export default function ProProfile() {
           lat: pro.lat || null,
           lng: pro.lng || null
         })
-        setLocalAvatar(pro.avatar_url)
+        // ✅ anti-cache
+        setLocalAvatar(pro.avatar_url ? pro.avatar_url + '?t=' + Date.now() : null)
       }
     }
   }
@@ -83,9 +70,7 @@ export default function ProProfile() {
     setRefreshing(false)
   }
 
-  const updateField = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
+  const updateField = (field, value) => setFormData(prev => ({ ...prev, [field]: value }))
 
   const toggleCategory = (categoryId) => {
     setSelectedCategories(prev => {
@@ -96,27 +81,18 @@ export default function ProProfile() {
     })
   }
 
-  // ─── Récupération de la position actuelle ─────────────────
   const getCurrentLocation = async () => {
     try {
-      // Demander la permission
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') {
         Alert.alert('Permission refusée', 'Nous avons besoin de votre position pour géolocaliser votre entreprise')
         return null
       }
-
-      // Récupérer la position
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High
-      })
-
-      // Récupérer l'adresse à partir des coordonnées
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
       const [addressResult] = await Location.reverseGeocodeAsync({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude
       })
-
       return {
         lat: location.coords.latitude,
         lng: location.coords.longitude,
@@ -131,31 +107,21 @@ export default function ProProfile() {
     }
   }
 
-  // ─── Mise à jour de la localisation ───────────────────────
   const handleUpdateLocation = async () => {
-    Alert.alert(
-      'Mettre à jour la position',
-      'Voulez-vous utiliser votre position actuelle pour la localisation de votre entreprise ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Oui', 
-          onPress: async () => {
-            const location = await getCurrentLocation()
-            if (location) {
-              // Mettre à jour les champs du formulaire
-              updateField('address', location.address)
-              updateField('city', location.city)
-              updateField('country', location.country)
-              updateField('lat', location.lat)
-              updateField('lng', location.lng)
-              
-              Alert.alert('Succès', 'Position récupérée ! N\'oubliez pas de sauvegarder votre profil.')
-            }
+    Alert.alert('Mettre à jour la position', 'Voulez-vous utiliser votre position actuelle ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Oui', onPress: async () => {
+          const location = await getCurrentLocation()
+          if (location) {
+            updateField('address', location.address)
+            updateField('city', location.city)
+            updateField('country', location.country)
+            updateField('lat', location.lat)
+            updateField('lng', location.lng)
+            Alert.alert('Succès', "Position récupérée ! N'oubliez pas de sauvegarder.")
           }
-        }
-      ]
-    )
+      }}
+    ])
   }
 
   const handleSave = async () => {
@@ -198,11 +164,23 @@ export default function ProProfile() {
     ])
   }
 
+  // ✅ CORRIGÉ — FileSystem + anti-cache
   const handleUpload = async (uri) => {
-    const uploadResult = await uploadAvatar(professional.id, uri)
-    if (uploadResult.success) {
-      setLocalAvatar(uploadResult.avatar_url)
-      loadProfile()
+    try {
+      const fileName = uri.split('/').pop()
+      const destUri = FileSystem.documentDirectory + fileName
+      await FileSystem.copyAsync({ from: uri, to: destUri })
+
+      const uploadResult = await uploadAvatar(professional.id, destUri)
+      if (uploadResult.success) {
+        setLocalAvatar(uploadResult.avatar_url + '?t=' + Date.now())
+        loadProfile()
+      } else {
+        Alert.alert('Erreur', "Échec de l'upload")
+      }
+    } catch (err) {
+      console.error('Upload error:', err)
+      Alert.alert('Erreur', "Impossible d'uploader l'image")
     }
   }
 
@@ -225,13 +203,12 @@ export default function ProProfile() {
   }
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.blumine[600]} />}
     >
-      {/* HEADER AIRBNB STYLE */}
       <View style={styles.header}>
         <View style={styles.profileCard}>
           <TouchableOpacity style={styles.avatarWrapper} onPress={showImagePickerOptions}>
@@ -248,14 +225,14 @@ export default function ProProfile() {
               <Ionicons name="camera" size={16} color={COLORS.white} />
             </View>
           </TouchableOpacity>
-          
+
           <View style={styles.headerInfo}>
             <Text style={styles.businessName}>{formData.business_name || 'Votre Commerce'}</Text>
             <Text style={styles.proLabel}>Compte Professionnel</Text>
           </View>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.mainEditButton, isEditing && { backgroundColor: COLORS.black, borderColor: COLORS.black }]}
           onPress={() => isEditing ? handleSave() : setIsEditing(true)}
         >
@@ -266,114 +243,73 @@ export default function ProProfile() {
       </View>
 
       <View style={styles.body}>
-        {/* SECTION INFOS */}
         <Text style={styles.airTitle}>Informations générales</Text>
         <View style={styles.airCard}>
-          <AirItem 
-            label="Nom commercial" 
-            value={formData.business_name} 
-            isEditing={isEditing}
-            onChangeText={(v) => updateField('business_name', v)}
-          />
-          <AirItem 
-            label="Description" 
-            value={formData.description} 
-            isEditing={isEditing}
-            multiline
-            onChangeText={(v) => updateField('description', v)}
-          />
+          <AirItem label="Nom commercial" value={formData.business_name} isEditing={isEditing} onChangeText={(v) => updateField('business_name', v)} />
+          <AirItem label="Description" value={formData.description} isEditing={isEditing} multiline onChangeText={(v) => updateField('description', v)} />
         </View>
 
-        {/* SECTION CATEGORIES */}
         <Text style={styles.airTitle}>Catégories d'activité</Text>
         <View style={styles.categoriesContainer}>
-            {allCategories.length > 0 && (
-                isEditing ? (
-                    allCategories.map(cat => {
-                        const isSelected = selectedCategories.some(c => c.id === cat.id)
-                        return (
-                            <TouchableOpacity
-                                key={cat.id}
-                                style={[styles.airChip, isSelected && styles.airChipSelected]}
-                                onPress={() => toggleCategory(cat.id)}
-                            >
-                                <Text style={[styles.airChipText, isSelected && styles.airChipTextSelected]}>{cat.name}</Text>
-                            </TouchableOpacity>
-                        )
-                    })
-                ) : (
-                    selectedCategories.length > 0 ? (
-                        selectedCategories.map(cat => (
-                            <View key={cat.id} style={styles.staticChip}>
-                                <Text style={styles.staticChipText}>{cat.name}</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <Text style={styles.noCategoriesText}>Aucune catégorie</Text>
-                    )
+          {allCategories.length > 0 && (
+            isEditing ? (
+              allCategories.map(cat => {
+                const isSelected = selectedCategories.some(c => c.id === cat.id)
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.airChip, isSelected && styles.airChipSelected]}
+                    onPress={() => toggleCategory(cat.id)}
+                  >
+                    <Text style={[styles.airChipText, isSelected && styles.airChipTextSelected]}>{cat.name}</Text>
+                  </TouchableOpacity>
                 )
-            )}
+              })
+            ) : (
+              selectedCategories.length > 0 ? (
+                selectedCategories.map(cat => (
+                  <View key={cat.id} style={styles.staticChip}>
+                    <Text style={styles.staticChipText}>{cat.name}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noCategoriesText}>Aucune catégorie</Text>
+              )
+            )
+          )}
         </View>
 
-        {/* SECTION CONTACT & LOCALISATION */}
         <Text style={styles.airTitle}>Contact & Localisation</Text>
         <View style={styles.airCard}>
           <AirItem label="Email professionnel" value={user?.email} isEditing={false} />
-          <AirItem 
-            label="Téléphone" 
-            value={formData.phone} 
-            isEditing={isEditing}
-            onChangeText={(v) => updateField('phone', v)}
-            keyboardType="phone-pad"
-          />
-          
-          {/* Bouton de géolocalisation - apparaît seulement en mode édition */}
-         {isEditing && (
-  <>
-    <TouchableOpacity style={styles.locationButton} onPress={handleUpdateLocation}>
-      <Ionicons name="location-outline" size={20} color={COLORS.white} />
-      <Text style={styles.locationButtonText}>Utiliser ma position actuelle</Text>
-    </TouchableOpacity>
-    
-    {/* Message explicatif */}
-    <View style={styles.locationInfoBox}>
-      <Ionicons name="information-circle-outline" size={18} color={COLORS.blumine[600]} />
-      <Text style={styles.locationInfoText}>
-        Cette position permettra à vos clients de vous localiser facilement sur la carte et de trouver votre atelier.
-      </Text>
-    </View>
-  </>
-)}
-          
-          <AirItem 
-            label="Adresse complète" 
-            value={formData.address} 
-            isEditing={isEditing}
-            onChangeText={(v) => updateField('address', v)}
-          />
+          <AirItem label="Téléphone" value={formData.phone} isEditing={isEditing} onChangeText={(v) => updateField('phone', v)} keyboardType="phone-pad" />
+
+          {isEditing && (
+            <>
+              <TouchableOpacity style={styles.locationButton} onPress={handleUpdateLocation}>
+                <Ionicons name="location-outline" size={20} color={COLORS.white} />
+                <Text style={styles.locationButtonText}>Utiliser ma position actuelle</Text>
+              </TouchableOpacity>
+              <View style={styles.locationInfoBox}>
+                <Ionicons name="information-circle-outline" size={18} color={COLORS.blumine[600]} />
+                <Text style={styles.locationInfoText}>
+                  Cette position permettra à vos clients de vous localiser facilement sur la carte et de trouver votre atelier.
+                </Text>
+              </View>
+            </>
+          )}
+
+          <AirItem label="Adresse complète" value={formData.address} isEditing={isEditing} onChangeText={(v) => updateField('address', v)} />
           <View style={styles.splitRow}>
-             <View style={{ flex: 1 }}>
-                <AirItem 
-                    label="Ville" 
-                    value={formData.city} 
-                    isEditing={isEditing}
-                    onChangeText={(v) => updateField('city', v)}
-                    noBorder
-                />
-             </View>
-             <View style={{ flex: 1 }}>
-                <AirItem 
-                    label="Pays" 
-                    value={formData.country} 
-                    isEditing={isEditing}
-                    onChangeText={(v) => updateField('country', v)}
-                    noBorder
-                />
-             </View>
+            <View style={{ flex: 1 }}>
+              <AirItem label="Ville" value={formData.city} isEditing={isEditing} onChangeText={(v) => updateField('city', v)} noBorder />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AirItem label="Pays" value={formData.country} isEditing={isEditing} onChangeText={(v) => updateField('country', v)} noBorder />
+            </View>
           </View>
         </View>
 
-        {/* LOGOUT */}
         <TouchableOpacity style={styles.airLogout} onPress={handleLogout}>
           <Text style={styles.airLogoutText}>Se déconnecter du compte</Text>
         </TouchableOpacity>
@@ -405,137 +341,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.white },
   content: { paddingBottom: 60 },
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[100]
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  avatarWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.gray[100],
-    ...Platform.select({
-        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 },
-        android: { elevation: 8 }
-    })
-  },
+  header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },
+  profileCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  avatarWrapper: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.gray[100], ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }, android: { elevation: 8 } }) },
   avatarImage: { width: 80, height: 80, borderRadius: 40 },
-  avatarPlaceholder: { 
-    width: 80, height: 80, borderRadius: 40, 
-    backgroundColor: COLORS.blumine[600], 
-    alignItems: 'center', justifyContent: 'center' 
-  },
+  avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.blumine[600], alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: COLORS.white, fontSize: 32, fontWeight: 'bold' },
-  cameraBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: COLORS.blumine[600],
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: COLORS.white,
-  },
+  cameraBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: COLORS.blumine[600], width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: COLORS.white },
   headerInfo: { marginLeft: 20 },
   businessName: { fontSize: 26, fontWeight: '700', color: COLORS.black, letterSpacing: -0.5 },
   proLabel: { fontSize: 14, color: COLORS.gray[500], marginTop: 2 },
-
-  mainEditButton: {
-    borderWidth: 1,
-    borderColor: COLORS.black,
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: COLORS.white
-  },
+  mainEditButton: { borderWidth: 1, borderColor: COLORS.black, borderRadius: 8, paddingVertical: 14, alignItems: 'center', backgroundColor: COLORS.white },
   mainEditButtonText: { fontWeight: '700', fontSize: 16, color: COLORS.black },
-
   body: { paddingHorizontal: 24 },
   airTitle: { fontSize: 22, fontWeight: '700', color: COLORS.black, marginTop: 32, marginBottom: 16 },
-  airCard: {
-    borderWidth: 1,
-    borderColor: COLORS.gray[200],
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    backgroundColor: COLORS.white,
-  },
-  airItem: {
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[100],
-  },
+  airCard: { borderWidth: 1, borderColor: COLORS.gray[200], borderRadius: 12, paddingHorizontal: 16, backgroundColor: COLORS.white },
+  airItem: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },
   airLabel: { fontSize: 11, color: COLORS.gray[500], textTransform: 'uppercase', fontWeight: '800', marginBottom: 4, letterSpacing: 0.5 },
   airValue: { fontSize: 17, color: COLORS.black, fontWeight: '400' },
   airInput: { fontSize: 17, color: COLORS.blumine[700], padding: 0 },
   splitRow: { flexDirection: 'row' },
-
   categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  airChip: {
-    paddingHorizontal: 18, paddingVertical: 10,
-    borderRadius: 25, borderWidth: 1, borderColor: COLORS.gray[300],
-    backgroundColor: COLORS.white
-  },
+  airChip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 25, borderWidth: 1, borderColor: COLORS.gray[300], backgroundColor: COLORS.white },
   airChipSelected: { backgroundColor: COLORS.black, borderColor: COLORS.black },
   airChipText: { color: COLORS.black, fontWeight: '600', fontSize: 14 },
   airChipTextSelected: { color: COLORS.white },
-  staticChip: { 
-    backgroundColor: COLORS.gray[50], 
-    paddingHorizontal: 14, 
-    paddingVertical: 8, 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    borderColor: COLORS.gray[200] 
-  },
+  staticChip: { backgroundColor: COLORS.gray[50], paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.gray[200] },
   staticChipText: { color: COLORS.gray[700], fontSize: 14, fontWeight: '500' },
   noCategoriesText: { fontSize: 14, color: COLORS.gray[400], fontStyle: 'italic' },
-
   airLogout: { marginTop: 48, paddingVertical: 12, alignSelf: 'flex-start' },
   airLogoutText: { color: COLORS.black, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' },
-
-  // Nouveaux styles pour le bouton de localisation
-  locationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.blumine[600],
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginVertical: 12,
-    gap: 8
-  },
-  locationButtonText: {
-    color: COLORS.white,
-    fontWeight: '600',
-    fontSize: 14
-  },
-  locationInfoBox: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  backgroundColor: COLORS.white,  // Fond blanc
-  padding: 12,
-  borderRadius: 10,
-  marginBottom: 12,
-  gap: 10,
-  borderWidth: 1,
-  borderColor: COLORS.gray[300]  // Bordure grise
-},
-locationInfoText: {
-  flex: 1,
-  fontSize: 12,
-  color: COLORS.gray[800],  // Presque noir
-  lineHeight: 18,
-  fontWeight: '400'
-}
+  locationButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.blumine[600], paddingVertical: 12, borderRadius: 10, marginVertical: 12, gap: 8 },
+  locationButtonText: { color: COLORS.white, fontWeight: '600', fontSize: 14 },
+  locationInfoBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: COLORS.white, padding: 12, borderRadius: 10, marginBottom: 12, gap: 10, borderWidth: 1, borderColor: COLORS.gray[300] },
+  locationInfoText: { flex: 1, fontSize: 12, color: COLORS.gray[800], lineHeight: 18, fontWeight: '400' }
 })

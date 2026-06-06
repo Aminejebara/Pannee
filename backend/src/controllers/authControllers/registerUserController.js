@@ -11,6 +11,24 @@ export const registerUser = async (req, res) => {
   try {
     const { username, email, password, phone } = req.body
 
+
+    const [existingUsername] = await pool.query(
+  "SELECT id, is_active FROM users WHERE username = ?",
+  [username]
+);
+
+if (existingUsername.length > 0) {
+  const user = existingUsername[0];
+  
+  // Si le compte est actif → username bloqué
+  if (user.is_active === 1) {
+    return res.status(409).json({ message: "Nom d'utilisateur déjà pris" });
+  }
+  
+  // Si le compte est inactif → on le réutilise plus tard
+  // (on ne bloque pas, on va merger avec la logique email)
+}
+
     // 🔍 check si email existe
     const [users] = await pool.query(
       "SELECT id, is_active FROM users WHERE email = ?",

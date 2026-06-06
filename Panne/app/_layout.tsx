@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router'
+import { Stack ,Redirect} from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 
 export default function RootLayout() {
@@ -8,7 +8,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(main)" />
-        
+        <Redirect href="/(auth)/login" />
       </Stack>
     </>
   )

@@ -228,31 +228,33 @@ function ConversationDetailInner() {
       )
     }
   }
-
-  const openCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission', 'Accès à la caméra nécessaire')
-      return
-    }
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.7 })
-    if (!result.canceled) await sendImage(result.assets[0].uri)
+const openCamera = async () => {
+  const { status } = await ImagePicker.requestCameraPermissionsAsync()
+  if (status !== 'granted') {
+    Alert.alert('Permission', 'Accès à la caméra nécessaire')
+    return
   }
+  const result = await ImagePicker.launchCameraAsync({ 
+    allowsEditing: false,  // ✅
+    quality: 0.7 
+  })
+  if (!result.canceled) await sendImage(result.assets[0].uri)
+}
 
-  const openGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission', 'Accès à la galerie nécessaire')
-      return
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
-    })
-    if (!result.canceled) await sendImage(result.assets[0].uri)
+const openGallery = async () => {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+  if (status !== 'granted') {
+    Alert.alert('Permission', 'Accès à la galerie nécessaire')
+    return
   }
-
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: false,  // ✅
+    quality: 0.7,
+  })
+  if (!result.canceled) await sendImage(result.assets[0].uri)
+}
+  
   const sendImage = async (uri) => {
     const tempId = `temp_${Date.now()}_${Math.random()}`
     const optimisticMessage = {
@@ -619,10 +621,13 @@ const styles = StyleSheet.create({
   headerAvatar: { width: 38, height: 38, borderRadius: 19 },
   headerAvatarPlaceholder: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: COLORS.blumine[50],
+    backgroundColor: '#000000',
+    
     alignItems: 'center', justifyContent: 'center',
   },
-  headerAvatarText: { fontSize: 15, fontWeight: '700', color: COLORS.blumine[600] },
+  headerAvatarText: { fontSize: 15, fontWeight: '700', color:
+    '#FFFFFF'
+   },
   headerInfo: { flex: 1, marginLeft: 10 },
   headerName: { fontSize: 16, fontWeight: '600', color: '#000' },
   headerPhone: { fontSize: 12, color: COLORS.gray[400], marginTop: 1 },

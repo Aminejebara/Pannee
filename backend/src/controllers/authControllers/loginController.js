@@ -17,13 +17,13 @@ export const login = async (req, res) => {
       "SELECT * FROM users WHERE email = ?", [email]
     )
     if (users.length === 0) {
-      return res.status(401).json({ message: "Email ou mot de passe incorrect 1 " })
+      return res.status(401).json({ message: "Email ou mot de passe incorrect  " })
     }
     const user = users[0]
 
     const isValid = await bcrypt.compare(password, user.password_hash)
     if (!isValid) {
-      return res.status(401).json({ message: "Email ou mot de passe incorrect 2" })
+      return res.status(401).json({ message: "Email ou mot de passe incorrect " })
     }
 
     if (!user.is_active) {

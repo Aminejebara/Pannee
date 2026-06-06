@@ -9,7 +9,7 @@ export default function HomeHeader({ userName, address, onRefreshLocation }) {
       {/* Ligne principale : Infos Utilisateur + Bouton Action */}
       <View style={styles.headerTopRow}>
         <View>
-          <Text style={styles.welcomeText}>Bonjour 👋</Text>
+          <Text style={styles.welcomeText}>Bonjour nigger 👋</Text>
           <Text style={styles.userName}>{userName}</Text>
         </View>
         

@@ -14,6 +14,10 @@
       "bundleIdentifier": "com.aminebenjebara.panne",
       "config": {
         "googleMapsApiKey": "AIzaSyAmnxE-yT8o9qhOUyWfPfSE6S1vgO8DrjI"
+      },
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Accès à vos photos pour votre photo de profil.",
+        "NSCameraUsageDescription": "Accès à votre caméra pour votre photo de profil."
       }
     },
     "android": {
@@ -31,7 +35,13 @@
         "googleMaps": {
           "apiKey": "AIzaSyAmnxE-yT8o9qhOUyWfPfSE6S1vgO8DrjI"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
@@ -52,6 +62,17 @@
         }
       ],
       "expo-web-browser",
+
+      
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "L'application accède à vos photos pour votre photo de profil.",
+          "cameraPermission": "L'application accède à votre caméra pour votre photo de profil.",
+          "microphonePermission": false
+        }
+      ],
+
       [
         "@react-native-google-signin/google-signin",
         {
