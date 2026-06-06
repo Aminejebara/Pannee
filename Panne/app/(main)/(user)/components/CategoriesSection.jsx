@@ -14,12 +14,15 @@ export default function CategoriesSection({ categories }) {
     >
       <View style={styles.categoryIcon}>
         <Ionicons 
-          name={item.icon || 'business-outline'}  // ← Utilise l'icône de la BASE !
-          size={24} 
-          color={COLORS.blumine[600]} 
+          name={item.icon || 'business-outline'}
+          size={26} 
+          color="#1A1A1A" 
         />
       </View>
-      <Text style={styles.categoryName}>{item.name}</Text>
+      {/* Autorise 2 lignes maximum pour un wrap élégant */}
+      <Text style={styles.categoryName} numberOfLines={2}>
+        {item.name}
+      </Text>
     </TouchableOpacity>
   )
 
@@ -27,7 +30,6 @@ export default function CategoriesSection({ categories }) {
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Catégories</Text>
-        
       </View>
       <FlatList
         data={categories}
@@ -42,12 +44,44 @@ export default function CategoriesSection({ categories }) {
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: 24, paddingHorizontal: 20 },
+  section: { marginTop: 28, paddingHorizontal: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.black },
-  viewAllText: { fontSize: 13, color: COLORS.blumine[600], fontWeight: '500' },
-  categoriesList: { gap: 12 },
-  categoryCard: { alignItems: 'center', marginRight: 16, width: 70 },
-  categoryIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.gray[50], alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: COLORS.gray[100] },
-  categoryName: { fontSize: 12, color: COLORS.gray[700], textAlign: 'center' },
+  sectionTitle: { fontSize: 19, fontWeight: '800', color: '#222222', letterSpacing: -0.3 },
+  
+  categoriesList: { 
+    paddingRight: 20,
+    paddingVertical: 4 
+  },
+  
+  categoryCard: { 
+    alignItems: 'center', 
+    marginRight: 12,
+    width: 85, // En fixant la largeur de la carte, TOUTES les icônes sont parfaitement espacées
+  },
+  categoryIcon: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
+    backgroundColor: '#FFFBE6', // Fond jaune crème doux
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 8, 
+    borderWidth: 2, 
+    borderColor: '#FFD700', // Bordure jaune/or
+    
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  categoryName: { 
+    fontSize: 12, 
+    color: '#222222', 
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.1,
+    lineHeight: 15, // Rapproche les deux lignes pour que ce soit compact et propre
+    height: 32, // Force la zone de texte à faire la taille de 2 lignes (aligne parfaitement les icônes horizontalement)
+  },
 })

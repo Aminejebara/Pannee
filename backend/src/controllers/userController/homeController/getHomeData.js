@@ -24,7 +24,7 @@ export const getHomeData = async (req, res) => {
         const [categories] = await pool.query(
             `SELECT id, name, slug, icon 
              FROM service_categories 
-             ORDER BY name ASC`
+              ORDER BY display_order ASC`
         );
 
         // 3. Récupérer les professionnels les mieux notés

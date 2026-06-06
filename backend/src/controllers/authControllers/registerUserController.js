@@ -7,38 +7,58 @@ import { OAuth2Client } from "google-auth-library"
 
 const client = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID)
 
-
-
-
-
-
-
 export const registerUser = async (req, res) => {
   try {
     const { username, email, password, phone } = req.body
 
-    const [existingEmail] = await pool.query(
-      "SELECT id FROM users WHERE email = ?", [email]
+    // 🔍 check si email existe
+    const [users] = await pool.query(
+      "SELECT id, is_active FROM users WHERE email = ?",
+      [email]
     )
-    if (existingEmail.length > 0) {
-      return res.status(409).json({ message: "Email déjà utilisé" })
+
+    let userId
+
+    // =========================
+    // CASE 1: user existe déjà
+    // =========================
+    if (users.length > 0) {
+      const user = users[0]
+
+      // ❌ déjà activé → email bloqué
+      if (user.is_active === 1) {
+        return res.status(409).json({ message: "Email déjà utilisé" })
+      }
+
+      // ♻️ pas activé → on réutilise le compte
+      userId = user.id
+
+      const password_hash = await bcrypt.hash(password, 12)
+
+      await pool.query(
+        "UPDATE users SET username = ?, password_hash = ?, phone = ? WHERE id = ?",
+        [username, password_hash, phone || null, userId]
+      )
+
+    } else {
+      // =========================
+      // CASE 2: nouveau user
+      // =========================
+
+      const password_hash = await bcrypt.hash(password, 12)
+
+      const [result] = await pool.query(
+        `INSERT INTO users (username, email, password_hash, phone, role, is_active)
+         VALUES (?, ?, ?, ?, 'user', FALSE)`,
+        [username, email, password_hash, phone || null]
+      )
+
+      userId = result.insertId
     }
 
-    const [existingUsername] = await pool.query(
-      "SELECT id FROM users WHERE username = ?", [username]
-    )
-    if (existingUsername.length > 0) {
-      return res.status(409).json({ message: "Username déjà utilisé" })
-    }
-
-    const password_hash = await bcrypt.hash(password, 12)
-
-    const [result] = await pool.query(
-      `INSERT INTO users (username, email, password_hash, phone, role, is_active)
-       VALUES (?, ?, ?, ?, 'user', FALSE)`,
-      [username, email, password_hash, phone || null]
-    )
-    const userId = result.insertId
+    // =========================
+    // OTP (toujours reset)
+    // =========================
 
     await pool.query("DELETE FROM otps WHERE user_id = ?", [userId])
 
@@ -52,10 +72,12 @@ export const registerUser = async (req, res) => {
 
     await sendOTPEmail(email, otp)
 
-    res.status(201).json({ message: "Compte créé — vérifie ton email" })
+    return res.status(201).json({
+      message: "Compte créé — vérifie ton email"
+    })
 
   } catch (err) {
     console.error("registerUser error:", err)
-    res.status(500).json({ message: "Erreur serveur" })
+    return res.status(500).json({ message: "Erreur serveur" })
   }
 }

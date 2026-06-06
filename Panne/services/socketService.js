@@ -10,7 +10,7 @@ export const connectSocket = () => {
     return null
   }
 
-  const API_URL = "http://192.168.1.197:5000"
+  const API_URL = "https://pannebackend.duckdns.org"
   // Enlever /api de l'URL socket !
 
   if (socket && socket.connected) {
