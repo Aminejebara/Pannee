@@ -53,11 +53,11 @@ export const registerPro = async (req, res) => {
 
     const [proResult] = await pool.query(
       `INSERT INTO professionals 
-       (user_id, business_name, description, address, lat, lng, city, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, business_name, description, address, lat, lng, city, country,status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [userId, business_name, description || null,
        address || null, lat || null, lng || null,
-       city || null, country || null]
+       city || null, country || null, 'active']
     )
     const professionalId = proResult.insertId
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   View,
   Text,
@@ -13,34 +13,17 @@ import {
   Image 
 } from 'react-native'
 import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
-import * as WebBrowser from 'expo-web-browser'
-import * as Google from 'expo-auth-session/providers/google'
 import { useAuth } from '../../hooks/useAuth'
 import { COLORS } from '../../constants/colors'
-import { GOOGLE_OAUTH } from '../../constants/config'
-
-WebBrowser.maybeCompleteAuthSession()
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const { login, googleAuth, loading, isAuthenticated, user } = useAuth()
+  const { login, loading, isAuthenticated, user } = useAuth()
 
-  // ✅ Plus besoin de redirectUri, les clients Android/iOS gèrent tout seuls
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: GOOGLE_OAUTH.androidClientId,
-    iosClientId: GOOGLE_OAUTH.iosClientId,
-  });
-
-  const handleGoogleLogin = async () => {
-    console.log('🔍 Redirect URI utilisée:', request?.redirectUri)
-    await promptAsync()
-  }
-
-  useEffect(() => {
+  // Redirection après authentification
+  React.useEffect(() => {
     if (isAuthenticated && user) {
       setTimeout(() => {
         if (user.role === 'professional') {
@@ -51,19 +34,6 @@ export default function LoginScreen() {
       }, 100)
     }
   }, [isAuthenticated, user])
-
-  useEffect(() => {
-    const handleGoogleResponse = async () => {
-      if (response?.type === 'success') {
-        setGoogleLoading(true)
-        const { id_token } = response.params
-        const result = await googleAuth(id_token)
-        setGoogleLoading(false)
-        if (!result.success) Alert.alert('Erreur', result.error)
-      }
-    }
-    handleGoogleResponse()
-  }, [response])
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -135,21 +105,6 @@ export default function LoginScreen() {
           disabled={loading}
         >
           {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.loginButtonText}>Continuer</Text>}
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.googleButton, googleLoading && { opacity: 0.7 }]}
-          onPress={handleGoogleLogin}
-          disabled={googleLoading || !request}
-        >
-          {googleLoading ? (
-            <ActivityIndicator color={COLORS.gray[700]} />
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={20} color={COLORS.gray[700]} />
-              <Text style={styles.googleButtonText}>Continuer avec Google</Text>
-            </>
-          )}
         </TouchableOpacity>
 
         <View style={styles.footer}>
@@ -250,19 +205,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   loginButtonText: { color: COLORS.white, fontSize: 18, fontWeight: '600' },
-  
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: COLORS.gray[300],
-    marginTop: 12,
-  },
-  googleButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.gray[700] },
   
   footer: { marginTop: 24, alignItems: 'center' },
   forgotText: { fontSize: 14, fontWeight: '600', color: COLORS.black, textDecorationLine: 'underline', marginBottom: 24 },

@@ -6,7 +6,7 @@ const API_URL = "https://panneapi.duckdns.org/api"
 console.log('🔵 API_URL:', API_URL)
 
 const api = axios.create({
-  baseURL:"https://panneapi.duckdns.org/api",
+  baseURL:"http://192.168.1.197:5000/api",
   timeout: 30000, // Augmenté à 30 secondes pour debug
   headers: { 'Content-Type': 'application/json' },
 })

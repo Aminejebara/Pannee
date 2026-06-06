@@ -52,8 +52,27 @@
         }
       ],
       "expo-web-browser",
-      "@react-native-google-signin/google-signin",
-      "expo-build-properties"
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.140902347206-6sjvsv9kdok2cam2722e44b8ic4pg6h5",
+          "androidClientId": "140902347206-fqoh6cvs39lf3qupl2t7o4p6csc29k0q.apps.googleusercontent.com"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0"
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

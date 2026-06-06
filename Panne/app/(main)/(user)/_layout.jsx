@@ -18,7 +18,7 @@ export default function UserLayout() {
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.05,
           shadowRadius: 10,
-          height: Platform.OS === 'ios' ? 88 : 65,
+          height: Platform.OS === 'ios' ? 88 : 105,
           paddingTop: 10,
           paddingBottom: Platform.OS === 'ios' ? 25 : 12,
         },

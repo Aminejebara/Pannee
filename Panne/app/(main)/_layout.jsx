@@ -1,4 +1,4 @@
-// FICHIER: app/(main)/_layout.jsx
+// app/(main)/_layout.jsx
 
 import { useEffect, useState } from 'react'
 import { Redirect, Stack, useSegments } from 'expo-router'
@@ -9,15 +9,23 @@ import { COLORS } from '../../constants/colors'
 export default function MainLayout() {
   const { isAuthenticated, isLoading, user } = useAuthStore()
   const segments = useSegments()
-  const [isReady, setIsReady] = useState(false)
+  
+  // Ajouter un timeout de sécurité
+  const [forceReady, setForceReady] = useState(false)
 
   useEffect(() => {
-    if (!isLoading) {
-      setIsReady(true)
-    }
-  }, [isLoading])
+    // Timeout de sécurité : après 3 secondes, on force l'affichage
+    const timer = setTimeout(() => {
+      if (!forceReady) {
+        setForceReady(true)
+      }
+    }, 3000)
+    
+    return () => clearTimeout(timer)
+  }, [])
 
-  if (!isReady || isLoading) {
+  // Afficher le loading seulement si isLoading est true ET qu'on n'a pas forcé le ready
+  if ((isLoading && !forceReady) || (!forceReady && isLoading)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.white }}>
         <ActivityIndicator size="large" color={COLORS.blumine[600]} />
@@ -32,17 +40,14 @@ export default function MainLayout() {
   const currentPath = segments[1]
   const expectedPath = user?.role === 'professional' ? '(pro)' : '(user)'
 
-  // ✅ CORRECTION: Permettre l'accès à conversation sans redirection
-  // Si on est dans conversation, ne pas rediriger
   if (currentPath !== expectedPath && currentPath !== 'conversation') {
     return <Redirect href={`/(main)/${expectedPath}`} />
   }
 
-  // ✅ CORRECTION: Afficher le Stack avec TOUS les screens
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name={expectedPath} />
-      <Stack.Screen name="conversation" />  {/* ← AJOUTER CETTE LIGNE */}
+      <Stack.Screen name="conversation" />
     </Stack>
   )
 }

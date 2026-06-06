@@ -23,7 +23,8 @@ import { useAuth } from '../../../../hooks/useAuth'
 import { COLORS } from '../../../../constants/colors'
 
 export default function ProfessionalDetail() {
-  const { id } = useLocalSearchParams()
+  const { id, returnTo, categoryId, categoryName } = useLocalSearchParams()
+
   const { user } = useAuth()
   const { createConversation } = useUser()
 
@@ -37,6 +38,20 @@ export default function ProfessionalDetail() {
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
   const [hasUserReviewed, setHasUserReviewed] = useState(false)
+
+  const handleGoBack = () => {
+    if (returnTo === 'category' && categoryId) {
+      router.push({
+        pathname: '/(main)/(user)/category/[id]',
+        params: { 
+          id: categoryId, 
+          name: categoryName 
+        }
+      })
+    } else {
+      router.back()
+    }
+  }
 
   const loadProfessional = async () => {
     try {
@@ -73,21 +88,21 @@ export default function ProfessionalDetail() {
   }
 
   const handleContact = async () => {
-  const result = await createConversation(id)
-  if (result.success) {
-    router.push({
-      pathname: '/conversation/[id]',  // Change le chemin (enlève (main))
-      params: { 
-        id: result.conversationId, 
-        contactName: professional?.business_name,
-        contactAvatar: professional?.avatar_url,  // ✅ AJOUTE CETTE LIGNE
-        professionalId: id 
-      }
-    })
-  } else {
-    Alert.alert('Erreur', 'Impossible de contacter le professionnel')
+    const result = await createConversation(id)
+    if (result.success) {
+      router.push({
+        pathname: '/conversation/[id]',
+        params: { 
+          id: result.conversationId, 
+          contactName: professional?.business_name,
+          contactAvatar: professional?.avatar_url,
+          professionalId: id 
+        }
+      })
+    } else {
+      Alert.alert('Erreur', 'Impossible de contacter le professionnel')
+    }
   }
-}
 
   const handleCall = () => {
     professional?.phone ? Linking.openURL(`tel:${professional.phone}`) : Alert.alert('Info', 'Numéro indisponible')
@@ -97,7 +112,7 @@ export default function ProfessionalDetail() {
     const query = professional?.lat && professional?.lng 
       ? `${professional.lat},${professional.lng}` 
       : encodeURIComponent(professional?.address || '')
-    if (query) Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`)
+    if (query) Linking.openURL(`http://maps.google.com/maps?q=${query}`)
   }
 
   const submitReview = async () => {
@@ -156,7 +171,6 @@ export default function ProfessionalDetail() {
     )
   }
 
-  // ✅ Récupération correcte des notes
   const ratingValue = professional.rating_avg || professional.rating?.average || 0
   const ratingCount = professional.rating_count || professional.rating?.count || 0
 
@@ -171,7 +185,7 @@ export default function ProfessionalDetail() {
           <View style={styles.coverImage}>
             <Ionicons name="business-outline" size={60} color={COLORS.white} />
           </View>
-          <TouchableOpacity style={styles.backButtonHeader} onPress={() => router.back()}>
+         <TouchableOpacity style={styles.backButtonHeader} onPress={handleGoBack}>
             <Ionicons name="arrow-back" size={24} color={COLORS.white} />
           </TouchableOpacity>
         </View>
@@ -190,7 +204,6 @@ export default function ProfessionalDetail() {
           
           <Text style={styles.businessName}>{professional.business_name}</Text>
           
-          {/* ✅ Affichage corrigé des notes */}
           <View style={styles.ratingSummary}>
             <Ionicons name="star" size={16} color={COLORS.black} />
             <Text style={styles.airbnbRatingText}>
@@ -281,11 +294,11 @@ export default function ProfessionalDetail() {
           </View>
         )}
 
-        {/* Bouton Laisser un avis - toujours visible si pas déjà fait */}
+        {/* Bouton Laisser un avis - Changement du style ici */}
         {!hasUserReviewed && (
-          <View style={{ padding: 20 }}>
+          <View style={styles.reviewContainer}>
             <TouchableOpacity style={styles.reviewBtn} onPress={() => setShowReviewModal(true)}>
-              <Ionicons name="star-outline" size={18} color={COLORS.white} />
+              <Ionicons name="star" size={20} color="#1A1A1A" />
               <Text style={styles.reviewBtnText}>Laisser un avis</Text>
             </TouchableOpacity>
           </View>
@@ -350,9 +363,20 @@ const styles = StyleSheet.create({
   viewAllText: { fontSize: 14, fontWeight: '600', textDecorationLine: 'underline', color: COLORS.blumine[600] },
   description: { fontSize: 15, color: COLORS.gray[600], lineHeight: 22 },
 
-  categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryBadge: { backgroundColor: "#ffffff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  categoryBadgeText: { color: COLORS.blumine[600], fontSize: 13, fontWeight: '500' },
+  // --- NOUVEAU STYLE DES CATÉGORIES ---
+  categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  categoryBadge: { 
+    backgroundColor: "#1A1A1A", // Noir élégant
+    paddingHorizontal: 18, 
+    paddingVertical: 10, 
+    borderRadius: 20, // Style pilule
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  categoryBadgeText: { color: "#FFFFFF", fontSize: 14, fontWeight: '600' }, // Texte blanc
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: COLORS.gray[100] },
   infoText: { flex: 1, fontSize: 15 },
@@ -367,8 +391,24 @@ const styles = StyleSheet.create({
   airbnbReviewDate: { fontSize: 12, color: COLORS.gray[500] },
   airbnbReviewComment: { fontSize: 14, color: COLORS.gray[700], lineHeight: 20 },
 
-  reviewBtn: { backgroundColor: COLORS.dixie[500], padding: 15, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-  reviewBtnText: { color: COLORS.white, fontWeight: 'bold' },
+  // --- NOUVEAU STYLE DU BOUTON AVIS ---
+  reviewContainer: { padding: 20, paddingBottom: 40 },
+  reviewBtn: { 
+    backgroundColor: '#FFD700', // Un beau jaune vif
+    paddingVertical: 16, 
+    paddingHorizontal: 20,
+    borderRadius: 16, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    gap: 10,
+    shadowColor: '#FFD700', // Ombre de la même couleur pour le relief
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  reviewBtnText: { color: '#1A1A1A', fontWeight: 'bold', fontSize: 16 }, // Texte sombre sur jaune = contraste parfait
 
   starsContainer: { flexDirection: 'row', gap: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },

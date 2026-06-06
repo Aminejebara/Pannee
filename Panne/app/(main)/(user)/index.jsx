@@ -89,14 +89,15 @@ export default function UserHome() {
         />
       )}
 
-      {/* Les plus récents */}
+      {/* Les plus récents 
       {homeData?.professionals?.recent?.length > 0 && (
         <ProfessionalsSection 
           title="Nouveaux professionnels" 
           professionals={homeData.professionals.recent} 
           onContact={handleContactPro}
         />
-      )}
+        
+      )}*/}
     </ScrollView>
   )
 }

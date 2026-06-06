@@ -11,13 +11,15 @@ import {
   Platform,
   StyleSheet,
   Image,
-  SafeAreaView,
   Linking,
   Modal,
   Dimensions,
   TouchableWithoutFeedback,
   ActionSheetIOS,
+  StatusBar,
+  Keyboard,
 } from 'react-native'
+import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -30,10 +32,11 @@ import { COLORS } from '../../../constants/colors'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
-export default function ConversationDetail() {
+function ConversationDetailInner() {
   const params = useLocalSearchParams()
   const { user } = useAuth()
   const isPro = user?.role === 'professional'
+  const insets = useSafeAreaInsets()
 
   const conversationId = params.id
   const contactName = params.contactName
@@ -55,6 +58,16 @@ export default function ConversationDetail() {
   const [selectedImage, setSelectedImage] = useState(null)
   const scrollViewRef = useRef()
   const typingTimeoutRef = useRef(null)
+  const messagesCountRef = useRef(0)
+
+  // Sur Android, quand le clavier se ferme le ScrollView remonte tout seul
+  // mais ne revient PAS en bas — on force un snap sans animation
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidHide', () => {
+      scrollViewRef.current?.scrollToEnd({ animated: false })
+    })
+    return () => sub.remove()
+  }, [])
 
   const loadMessages = async () => {
     const result = await getMessages(conversationId)
@@ -131,20 +144,29 @@ export default function ConversationDetail() {
     }
   }, [conversationId, user?.id])
 
-  const scrollToBottom = () => {
-    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 200)
+  const scrollToBottom = (animated = true) => {
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated }), 150)
   }
+
+  // Scroll uniquement quand un nouveau message arrive,
+  // pas quand le clavier s'ouvre/ferme (évite le "stuck at top")
+  useEffect(() => {
+    if (messages.length > messagesCountRef.current) {
+      messagesCountRef.current = messages.length
+      scrollToBottom()
+    }
+  }, [messages.length])
 
   // ─── Appel téléphonique ──────────────────────────────────
   const handleCall = () => {
     if (!contactPhone) {
-      Alert.alert('Numéro indisponible', 'Le numéro de téléphone de ce contact n\'est pas disponible.')
+      Alert.alert('Numéro indisponible', "Le numéro de téléphone de ce contact n'est pas disponible.")
       return
     }
     const phoneUrl = `tel:${contactPhone}`
     Linking.canOpenURL(phoneUrl).then(supported => {
       if (supported) Linking.openURL(phoneUrl)
-      else Alert.alert('Erreur', 'Impossible d\'effectuer l\'appel')
+      else Alert.alert('Erreur', "Impossible d'effectuer l'appel")
     })
   }
 
@@ -348,17 +370,6 @@ export default function ConversationDetail() {
         styles.messageRow,
         isOwnMessage ? styles.messageRowRight : styles.messageRowLeft
       ]}>
-        {!isOwnMessage && (
-          <View style={styles.avatarMessage}>
-            {contactAvatar
-              ? <Image source={{ uri: contactAvatar }} style={styles.avatarImageSmall} />
-              : <View style={styles.avatarSmall}>
-                  <Text style={styles.avatarSmallText}>{contactName?.charAt(0)?.toUpperCase() || 'C'}</Text>
-                </View>
-            }
-          </View>
-        )}
-
         <View style={[
           styles.messageBubble,
           isOwnMessage ? styles.messageBubbleOwn : styles.messageBubbleOther,
@@ -366,7 +377,6 @@ export default function ConversationDetail() {
           isImage && styles.imageBubble
         ]}>
           {isImage ? (
-            // ─── Image cliquable → plein écran ───────────
             <TouchableOpacity onPress={() => !isTemp && setSelectedImage(item.content)} activeOpacity={0.9}>
               <Image source={{ uri: item.content }} style={styles.messageImage} />
               {isTemp && (
@@ -376,7 +386,6 @@ export default function ConversationDetail() {
               )}
             </TouchableOpacity>
           ) : isLocation ? (
-            // ─── Position → ouvre Google Maps ────────────
             <TouchableOpacity onPress={() => openLocationInMaps(item.content)} activeOpacity={0.7}>
               <View style={styles.locationMessage}>
                 <View style={[styles.locationIcon, isOwnMessage && styles.locationIconOwn]}>
@@ -415,17 +424,24 @@ export default function ConversationDetail() {
 
   if (loading && messages.length === 0) {
     return (
-      <SafeAreaView style={styles.loaderContainer}>
+      <View style={styles.loaderContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
         <ActivityIndicator size="small" color={COLORS.blumine[600]} />
-      </SafeAreaView>
+      </View>
     )
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      {/* StatusBar explicite — critique sur Android */}
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+        translucent={false}
+      />
 
-      {/* ─── Header ──────────────────────────────────────── */}
-      <View style={styles.header}>
+      {/* ─── Header — respecte le safe area top ─────────── */}
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.6}>
           <Ionicons name="chevron-back" size={24} color={COLORS.black} />
         </TouchableOpacity>
@@ -448,23 +464,39 @@ export default function ConversationDetail() {
           </View>
         </View>
 
-        {/* Bouton appel */}
-        <TouchableOpacity onPress={handleCall} style={styles.callButton} activeOpacity={0.7}>
-          <Ionicons name="call" size={20} color={COLORS.dixie[50]} />
+        <TouchableOpacity
+          onPress={handleCall}
+          style={[styles.callButton, !contactPhone && styles.callButtonDisabled]}
+          disabled={!contactPhone}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="call" size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
+      {/*
+        ─── KeyboardAvoidingView ────────────────────────────
+        Sur Android : behavior="height" est le plus stable.
+        Sur iOS     : behavior="padding" avec un offset = hauteur header.
+        On englobe ScrollView + InputSection ensemble pour que
+        l'input ne "saute" pas mais que tout remonte d'un bloc.
+      */}
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
-          onContentSizeChange={scrollToBottom}
+          contentContainerStyle={[
+            styles.messagesContent,
+            // Ajoute un padding bas pour ne pas que le dernier msg
+            // soit caché par la barre de nav Android
+            { paddingBottom: Math.max(insets.bottom, 8) }
+          ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {messages.length === 0 ? (
             <View style={styles.emptyMessages}>
@@ -479,15 +511,17 @@ export default function ConversationDetail() {
           )}
         </ScrollView>
 
-        {/* ─── Input ───────────────────────────────────────── */}
-        <View style={styles.inputSection}>
+        {/* ─── Input ─────────────────────────────────────── */}
+        <View style={[
+          styles.inputSection,
+          // Respecte la nav bar Android (gesture nav ou boutons)
+          { paddingBottom: Math.max(insets.bottom, 10) }
+        ]}>
           <View style={styles.inputWrapper}>
-            {/* Caméra + Galerie */}
             <TouchableOpacity style={styles.iconButton} onPress={handleCameraPress} disabled={sending} activeOpacity={0.6}>
               <Ionicons name="camera-outline" size={22} color={sending ? COLORS.gray[300] : COLORS.gray[500]} />
             </TouchableOpacity>
 
-            {/* Localisation */}
             <TouchableOpacity style={styles.iconButton} onPress={sendLocation} disabled={sendingLocation} activeOpacity={0.6}>
               {sendingLocation
                 ? <ActivityIndicator size="small" color={COLORS.blumine[600]} />
@@ -503,6 +537,8 @@ export default function ConversationDetail() {
               onChangeText={onTextChange}
               multiline
               editable={!sending}
+              // Empêche Android de scroller la page au focus
+              underlineColorAndroid="transparent"
             />
 
             {newMessage.trim().length > 0 && (
@@ -531,50 +567,88 @@ export default function ConversationDetail() {
               </View>
             </TouchableWithoutFeedback>
 
-            {/* Bouton fermer */}
-            <TouchableOpacity style={styles.imageModalClose} onPress={() => setSelectedImage(null)} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={[styles.imageModalClose, { top: insets.top + 10 }]}
+              onPress={() => setSelectedImage(null)}
+              activeOpacity={0.8}
+            >
               <Ionicons name="close" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+    </View>
+  )
+}
 
-    </SafeAreaView>
+// Wrapper qui fournit SafeAreaProvider au cas où il n'est pas
+// déjà fourni plus haut dans l'arbre de navigation
+export default function ConversationDetail() {
+  return (
+    <SafeAreaProvider>
+      <ConversationDetailInner />
+    </SafeAreaProvider>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
+  flex: { flex: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
 
-  // Header
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#EBEBEB' },
+  // ─── Header ────────────────────────────────────────────────
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
   backButton: { padding: 6 },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 4 },
   headerAvatar: { width: 38, height: 38, borderRadius: 19 },
-  headerAvatarPlaceholder: { width: 38, height: 38, borderRadius: 19, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
-  headerAvatarText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  headerAvatarPlaceholder: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: COLORS.blumine[50],
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerAvatarText: { fontSize: 15, fontWeight: '700', color: COLORS.blumine[600] },
   headerInfo: { flex: 1, marginLeft: 10 },
   headerName: { fontSize: 16, fontWeight: '600', color: '#000' },
   headerPhone: { fontSize: 12, color: COLORS.gray[400], marginTop: 1 },
   typingIndicator: { fontSize: 12, color: COLORS.blumine[500], marginTop: 1, fontStyle: 'italic' },
-  callButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.blumine[50] },
+  callButton: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.blumine[600],
+  },
+  callButtonDisabled: {
+    backgroundColor: COLORS.blumine[200],
+    opacity: 0.5,
+  },
 
-  // Messages
+  // ─── Messages ──────────────────────────────────────────────
   messagesContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  messagesContent: { paddingHorizontal: 16, paddingVertical: 20 },
+  messagesContent: { paddingHorizontal: 16, paddingTop: 20 },
   messageRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end' },
-  messageRowLeft: { justifyContent: 'flex-start' },
+  messageRowLeft: { justifyContent: 'flex-start', marginLeft: 4 }, // petit décalage pour compenser l'absence d'avatar
   messageRowRight: { justifyContent: 'flex-end' },
-  avatarMessage: { marginRight: 8, marginBottom: 2 },
-  avatarSmall: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
-  avatarImageSmall: { width: 28, height: 28, borderRadius: 14 },
-  avatarSmallText: { fontSize: 11, fontWeight: '700', color: COLORS.blumine[600] },
+  // avatar supprimé, plus besoin des styles associés
 
   messageBubble: { maxWidth: '75%', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18 },
   messageBubbleOwn: { backgroundColor: COLORS.blumine[600], borderBottomRightRadius: 4 },
   messageBubbleOther: { backgroundColor: '#F0F0F0', borderBottomLeftRadius: 4 },
- imageBubble: { padding: 0, borderRadius: 14, overflow: 'hidden', backgroundColor: 'transparent' },
+  imageBubble: { padding: 0, borderRadius: 14, overflow: 'hidden', backgroundColor: 'transparent' },
   tempBubble: { opacity: 0.6 },
 
   messageText: { fontSize: 15, lineHeight: 20 },
@@ -584,32 +658,82 @@ const styles = StyleSheet.create({
   timeOwn: { color: 'rgba(255,255,255,0.65)' },
   timeOther: { color: '#AAA' },
 
-  // Image message
+  // ─── Image message ─────────────────────────────────────────
   messageImage: { width: 220, height: 160, borderRadius: 12 },
-  imageUploadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  imageUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  // Location message
+  // ─── Location message ──────────────────────────────────────
   locationMessage: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 2 },
-  locationIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.blumine[50], alignItems: 'center', justifyContent: 'center' },
+  locationIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: COLORS.blumine[50],
+    alignItems: 'center', justifyContent: 'center',
+  },
   locationIconOwn: { backgroundColor: 'rgba(255,255,255,0.2)' },
   locationSubtext: { fontSize: 11, marginTop: 1 },
 
-  // Input
-  inputSection: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fff', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#EBEBEB' },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 26, paddingHorizontal: 8, paddingVertical: 4 },
+  // ─── Input ─────────────────────────────────────────────────
+  inputSection: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EBEBEB',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 26,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   iconButton: { padding: 7 },
-  input: { flex: 1, marginHorizontal: 6, maxHeight: 100, fontSize: 15, color: '#000', paddingVertical: 8 },
-  sendButton: { backgroundColor: COLORS.blumine[600], width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  input: {
+    flex: 1,
+    marginHorizontal: 6,
+    maxHeight: 100,
+    fontSize: 15,
+    color: '#000',
+    paddingVertical: 8,
+    textAlignVertical: 'center',
+  },
+  sendButton: {
+    backgroundColor: COLORS.blumine[600],
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: 4,
+  },
 
-  // Empty
+  // ─── Empty ─────────────────────────────────────────────────
   emptyMessages: { alignItems: 'center', justifyContent: 'center', paddingTop: 120 },
-  emptyIconCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyIconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+  },
   emptyText: { fontSize: 16, fontWeight: '600', color: '#000' },
   emptySubtext: { fontSize: 14, color: '#AAA', marginTop: 4 },
 
-  // Modal image
-  imageModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },
+  // ─── Modal image ───────────────────────────────────────────
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   imageModalContent: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.85 },
   imageModalFull: { width: '100%', height: '100%' },
-  imageModalClose: { position: 'absolute', top: 50, right: 20, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  imageModalClose: {
+    position: 'absolute',
+    right: 20,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
 })

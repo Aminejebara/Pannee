@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { 
   View, Text, FlatList, StyleSheet, ActivityIndicator, 
   TouchableOpacity, Image, RefreshControl, Dimensions, Modal,
-  Platform
+  Platform, BackHandler
 } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { useUser } from '../../../../hooks/useUser'
@@ -14,7 +14,7 @@ import MapView, { Marker, Callout, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'rea
 const { width, height } = Dimensions.get('window')
 
 export default function CategoryProsScreen() {
-  const { id, name } = useLocalSearchParams()
+  const { id, name, returnTo, previousScreen } = useLocalSearchParams()
   const { getNearbyProfessionals } = useUser()
   
   const [professionals, setProfessionals] = useState([])
@@ -30,6 +30,34 @@ export default function CategoryProsScreen() {
   
   const mapRef = useRef(null)
   const modalMapRef = useRef(null)
+
+  // Gestion du bouton retour Android
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress)
+    return () => backHandler.remove()
+  }, [])
+
+  const handleBackPress = () => {
+    handleGoBack()
+    return true // Empêche le comportement par défaut
+  }
+
+  const handleGoBack = () => {
+    // Vérifie s'il y a un écran spécifique de retour
+    if (returnTo === 'home') {
+      router.replace('/(main)/(user)/home')
+    } else if (returnTo === 'search') {
+      router.replace('/(main)/(user)/search')
+    } else if (returnTo === 'favorites') {
+      router.replace('/(main)/(user)/favorites')
+    } else if (previousScreen === 'professionalDetail') {
+      // Retour à l'écran précédent avec les paramètres
+      router.back()
+    } else {
+      // Retour par défaut à la page précédente
+      router.back()
+    }
+  }
 
   useEffect(() => {
     getLocation()
@@ -143,7 +171,15 @@ export default function CategoryProsScreen() {
     return (
       <Callout
         tooltip={Platform.OS === 'ios'}
-        onPress={() => router.push(`/(main)/(user)/professionals/${pro.id}`)}
+        onPress={() => router.push({
+          pathname: `/(main)/(user)/professionals/${pro.id}`,
+          params: { 
+            returnTo: 'category',
+            categoryId: id,
+            categoryName: name,
+            previousScreen: 'categoryPros'
+          }
+        })}
       >
         <View style={styles.calloutContainer}>
           <View style={styles.calloutHeader}>
@@ -194,7 +230,7 @@ export default function CategoryProsScreen() {
     </Marker>
   )
 
-  // Marqueur pour Android avec pinColor et Callout simplifié
+  // Marqueur pour Android avec pinColor et navigation améliorée
   const MarkerForAndroid = ({ pro }) => (
     <Marker
       coordinate={{
@@ -204,7 +240,15 @@ export default function CategoryProsScreen() {
       pinColor={COLORS.blumine[600]}
       title={pro.business_name}
       description={pro.distance_km ? `${pro.distance_km} km` : undefined}
-      onPress={() => router.push(`/(main)/(user)/professionals/${pro.id}`)}
+      onPress={() => router.push({
+        pathname: `/(main)/(user)/professionals/${pro.id}`,
+        params: { 
+          returnTo: 'category',
+          categoryId: id,
+          categoryName: name,
+          previousScreen: 'categoryPros'
+        }
+      })}
     />
   )
 
@@ -264,7 +308,15 @@ export default function CategoryProsScreen() {
     return (
       <TouchableOpacity 
         style={styles.card}
-        onPress={() => router.push(`/(main)/(user)/professionals/${safeItem.id}`)}
+        onPress={() => router.push({
+          pathname: `/(main)/(user)/professionals/${safeItem.id}`,
+          params: { 
+            returnTo: 'category',
+            categoryId: id,
+            categoryName: name,
+            previousScreen: 'categoryPros'
+          }
+        })}
       >
         <View style={styles.avatarContainer}>
           {avatarUrl ? (
@@ -329,7 +381,7 @@ export default function CategoryProsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.black} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
