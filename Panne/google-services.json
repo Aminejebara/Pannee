@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "807505613501",
+    "project_id": "panne-5f213",
+    "storage_bucket": "panne-5f213.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:807505613501:android:57f1ebe23112b23b55ddd4",
+        "android_client_info": {
+          "package_name": "com.aminebenjebara.panne"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCXYMorGUN-_QrH3HXsKcIFiFB0t3h7LcY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

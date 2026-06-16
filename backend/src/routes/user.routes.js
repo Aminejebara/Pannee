@@ -14,8 +14,13 @@ import {
     createConversation,
     sendMessage,
     getUnreadCount,
-    uploadMessageImage
+    uploadMessageImage,
+    // ✅ AJOUT DES NOUVEAUX CONTROLLERS UNSEND
+    unsendMessage,
+    unsendAllMessages,
+    getUnsentMessages
 } from "../controllers/messageController/messageController.js"
+import { registerPushToken, deactivatePushToken } from "../controllers/notificationController.js"
 
 const router = Router()
 
@@ -44,6 +49,24 @@ router.post("/conversations/:conversationId/messages", sendMessage)
 router.get("/messages/unread/count", getUnreadCount)
 router.post("/upload/message-image", authMiddleware, uploadMessageImage)
 
+// ─── Localisation ───────────────────────────────────────────
 router.put("/location", updateUserLocation)
+
+// ============================================================
+// 🆕 ROUTES UNSEND - SUPPRIMER POUR TOUT LE MONDE
+// ============================================================
+
+// UNSEND un message (le sender supprime pour tout le monde)
+router.delete("/messages/:messageId/unsend", unsendMessage)
+
+// UNSEND tous les messages d'une conversation (le sender supprime tous ses messages)
+router.delete("/conversations/:conversationId/unsend-all", unsendAllMessages)
+
+// Recuperer les messages UNSEND d'une conversation (pour audit)
+router.get("/conversations/:conversationId/unsent", getUnsentMessages)
+
+// ─── Notifications ─────────────────────────────────────────
+router.post("/notifications/register-token", registerPushToken)
+router.post("/notifications/deactivate-token", deactivatePushToken)
 
 export default router

@@ -31,6 +31,15 @@ app.use("/health", async (req, res) => {
     res.json({ message: "ok" })
 })
 
+// server.js - Ajoutez cette route de test
+app.get("/api/test", (req, res) => {
+    res.json({ 
+        message: "Backend fonctionne ✅", 
+        env: process.env.NODE_ENV,
+        time: new Date().toISOString()
+    })
+})
+
 app.use("/api/auth", authRoutes)
 app.use("/api/user", userRoutes)
 app.use("/api/pro", proRoutes)

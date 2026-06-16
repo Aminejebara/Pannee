@@ -125,7 +125,6 @@ export function initializeSocket(server) {
           [msgResult.insertId]
         )
 
-        // ✅ CORRECTION: receiverId = user_id du pro, mais la room = professional_{professionals.id}
         let receiverRoom = null
         if (receiverType === 'user') {
           receiverRoom = `user_${receiverId}`
@@ -179,7 +178,8 @@ export function initializeSocket(server) {
            SET is_read = 1 
            WHERE conversation_id = ? 
            AND sender_type = ? 
-           AND is_read = 0`,
+           AND is_read = 0
+           AND is_unsent = FALSE`,  // ✅ AJOUT FILTRE UNSEND
           [conversationId, otherPartyType]
         )
 
@@ -200,6 +200,7 @@ export function initializeSocket(server) {
         const [messages] = await pool.query(
           `SELECT * FROM messages 
            WHERE conversation_id = ? 
+             AND is_unsent = FALSE  -- ✅ FILTRER UNSEND
            ORDER BY created_at DESC 
            LIMIT ? OFFSET ?`,
           [conversationId, parseInt(limit), parseInt(offset)]
@@ -217,7 +218,6 @@ export function initializeSocket(server) {
       }
     })
 
-    // ✅ CORRECTION: async + requête SQL pour récupérer le bon professional_id
     socket.on("typing", async (data) => {
       try {
         const { conversationId, receiverId, receiverType, isTyping } = data
@@ -263,7 +263,8 @@ export function initializeSocket(server) {
            SET is_read = 1 
            WHERE conversation_id = ? 
            AND sender_type = ? 
-           AND is_read = 0`,
+           AND is_read = 0
+           AND is_unsent = FALSE`,  // ✅ AJOUT FILTRE UNSEND
           [conversationId, otherPartyType]
         )
 
@@ -273,6 +274,242 @@ export function initializeSocket(server) {
         })
       } catch (err) {
         console.error("mark_conversation_read error:", err)
+      }
+    })
+
+    // ============================================================
+    // 🆕 EVENEMENTS UNSEND (SOCKET.IO)
+    // ============================================================
+
+    /**
+     * UNSEND un message (le sender supprime pour tout le monde)
+     * Emis par le sender quand il fait UNSEND
+     */
+    socket.on("unsend_message", async (data) => {
+      try {
+        const { messageId, conversationId } = data
+        const userId = socket.userId
+        const userRole = socket.userRole
+
+        console.log(`🔴 UNSEND - messageId: ${messageId}, userId: ${userId}`)
+
+        // 1. Verifier que le message existe et que l'utilisateur est l'expediteur
+        const [messages] = await pool.query(
+          `SELECT * FROM messages WHERE id = ? AND sender_id = ?`,
+          [messageId, userId]
+        )
+
+        if (messages.length === 0) {
+          socket.emit("unsend_error", {
+            success: false,
+            message: "Message non trouve ou vous n'etes pas l'expediteur"
+          })
+          return
+        }
+
+        const message = messages[0]
+
+        // 2. Verifier que le message n'est pas deja unsend
+        if (message.is_unsent) {
+          socket.emit("unsend_error", {
+            success: false,
+            message: "Ce message a deja ete unsend"
+          })
+          return
+        }
+
+        // 3. Marquer le message comme unsend
+        await pool.query(
+          `UPDATE messages 
+           SET is_unsent = TRUE, 
+               unsent_at = NOW(),
+               unsent_by = ?
+           WHERE id = ?`,
+          [userId, messageId]
+        )
+
+        // 4. Recuperer le message mis a jour
+        const [updatedMessage] = await pool.query(
+          `SELECT * FROM messages WHERE id = ?`,
+          [messageId]
+        )
+
+        // 5. Notifier les deux parties
+        const senderRoom = userRole === 'user' ? `user_${userId}` : `professional_${socket.professionalId || conversationId}`
+        
+        // Notifier le sender
+        socket.emit("message_unsent_confirmed", {
+          success: true,
+          messageId: parseInt(messageId),
+          conversationId: parseInt(conversationId),
+          unsentBy: userId,
+          unsentAt: new Date()
+        })
+
+        // Notifier le destinataire
+        const receiverType = userRole === 'user' ? 'professional' : 'user'
+        let receiverRoom = null
+        
+        if (receiverType === 'user') {
+          const [conv] = await pool.query(
+            `SELECT user_id FROM conversations WHERE id = ?`,
+            [conversationId]
+          )
+          if (conv.length > 0) {
+            receiverRoom = `user_${conv[0].user_id}`
+          }
+        } else {
+          const [conv] = await pool.query(
+            `SELECT professional_id FROM conversations WHERE id = ?`,
+            [conversationId]
+          )
+          if (conv.length > 0) {
+            receiverRoom = `professional_${conv[0].professional_id}`
+          }
+        }
+
+        if (receiverRoom) {
+          io.to(receiverRoom).emit("message_unsent", {
+            messageId: parseInt(messageId),
+            conversationId: parseInt(conversationId),
+            unsentBy: userId,
+            unsentAt: new Date()
+          })
+          console.log(`📤 UNSEND - Notification envoyee a ${receiverRoom}`)
+        }
+
+        console.log(`✅ UNSEND - Message ${messageId} unsend avec succes`)
+
+      } catch (err) {
+        console.error("unsend_message error:", err)
+        socket.emit("unsend_error", {
+          success: false,
+          message: "Erreur lors de l'unsend du message"
+        })
+      }
+    })
+
+    /**
+     * UNSEND tous les messages d'une conversation
+     * Emis par le sender quand il fait UNSEND ALL
+     */
+    socket.on("unsend_all_messages", async (data) => {
+      try {
+        const { conversationId } = data
+        const userId = socket.userId
+        const userRole = socket.userRole
+
+        console.log(`🔴 UNSEND ALL - conversationId: ${conversationId}, userId: ${userId}`)
+
+        // 1. Verifier que l'utilisateur a acces a la conversation
+        let hasAccess = false
+        if (userRole === 'user') {
+          const [convCheck] = await pool.query(
+            `SELECT id FROM conversations WHERE id = ? AND user_id = ?`,
+            [conversationId, userId]
+          )
+          hasAccess = convCheck.length > 0
+        } else {
+          const [convCheck] = await pool.query(
+            `SELECT c.id FROM conversations c
+             JOIN professionals p ON c.professional_id = p.id
+             WHERE c.id = ? AND p.user_id = ?`,
+            [conversationId, userId]
+          )
+          hasAccess = convCheck.length > 0
+        }
+
+        if (!hasAccess) {
+          socket.emit("unsend_all_error", {
+            success: false,
+            message: "Acces non autorise a cette conversation"
+          })
+          return
+        }
+
+        // 2. Compter les messages a unsend
+        const [countResult] = await pool.query(
+          `SELECT COUNT(*) as count FROM messages 
+           WHERE conversation_id = ? 
+           AND sender_id = ? 
+           AND is_unsent = FALSE`,
+          [conversationId, userId]
+        )
+
+        if (countResult[0].count === 0) {
+          socket.emit("unsend_all_confirmed", {
+            success: true,
+            conversationId: parseInt(conversationId),
+            affectedCount: 0,
+            message: "Aucun message a unsend"
+          })
+          return
+        }
+
+        // 3. Marquer tous les messages comme unsend
+        const [result] = await pool.query(
+          `UPDATE messages 
+           SET is_unsent = TRUE, 
+               unsent_at = NOW(),
+               unsent_by = ?
+           WHERE conversation_id = ? 
+           AND sender_id = ? 
+           AND is_unsent = FALSE`,
+          [userId, conversationId, userId]
+        )
+
+        // 4. Notifier les deux parties
+        const senderRoom = userRole === 'user' ? `user_${userId}` : `professional_${socket.professionalId || conversationId}`
+        
+        // Notifier le sender
+        socket.emit("unsend_all_confirmed", {
+          success: true,
+          conversationId: parseInt(conversationId),
+          affectedCount: result.affectedRows,
+          unsentBy: userId,
+          unsentAt: new Date()
+        })
+
+        // Notifier le destinataire
+        const receiverType = userRole === 'user' ? 'professional' : 'user'
+        let receiverRoom = null
+        
+        if (receiverType === 'user') {
+          const [conv] = await pool.query(
+            `SELECT user_id FROM conversations WHERE id = ?`,
+            [conversationId]
+          )
+          if (conv.length > 0) {
+            receiverRoom = `user_${conv[0].user_id}`
+          }
+        } else {
+          const [conv] = await pool.query(
+            `SELECT professional_id FROM conversations WHERE id = ?`,
+            [conversationId]
+          )
+          if (conv.length > 0) {
+            receiverRoom = `professional_${conv[0].professional_id}`
+          }
+        }
+
+        if (receiverRoom) {
+          io.to(receiverRoom).emit("messages_unsent_all", {
+            conversationId: parseInt(conversationId),
+            unsentBy: userId,
+            count: result.affectedRows,
+            unsentAt: new Date()
+          })
+          console.log(`📤 UNSEND ALL - Notification envoyee a ${receiverRoom}`)
+        }
+
+        console.log(`✅ UNSEND ALL - ${result.affectedRows} messages unsend dans la conversation ${conversationId}`)
+
+      } catch (err) {
+        console.error("unsend_all_messages error:", err)
+        socket.emit("unsend_all_error", {
+          success: false,
+          message: "Erreur lors de l'unsend des messages"
+        })
       }
     })
 

@@ -1,31 +1,76 @@
-import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import React, { useRef } from 'react'
+import { View, Text, StyleSheet, Platform, Animated, Pressable } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../../../../constants/colors'
 
 export default function HomeHeader({ userName, address, onRefreshLocation }) {
+  const animatedValue = useRef(new Animated.Value(0)).current
+
+  const handlePressIn = () => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 100,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  const handlePressOut = () => {
+    Animated.timing(animatedValue, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  const scale = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.98],
+  })
+
   return (
     <View style={styles.container}>
-      {/* Ligne principale : Infos Utilisateur + Bouton Action */}
+      {/* Ligne principale : Message d'accueil */}
       <View style={styles.headerTopRow}>
         <View>
-          <Text style={styles.welcomeText}>Bonjour nigger 👋</Text>
-          <Text style={styles.userName}>{userName}</Text>
-        </View>
-        
-        <TouchableOpacity style={styles.locationCircleButton} onPress={onRefreshLocation}>
-          <Ionicons name="location-outline" size={20} color="#1A1A1A" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Block Adresse Style Airbnb Capsule */}
-      {address?.formattedAddress && (
-        <View style={styles.addressCapsule}>
-          <Ionicons name="navigate-outline" size={14} color="#666666" />
-          <Text style={styles.addressText} numberOfLines={1}>
-            {address.formattedAddress}
+          <Text style={styles.welcomeText}>Panne</Text>
+          <Text style={styles.userName}>
+            Bonjour, {userName || 'Utilisateur'}<Text style={styles.dot}>.</Text>
           </Text>
         </View>
+        
+        {/* Badge Avatar Minimaliste ou initiales style Airbnb */}
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarText}>
+            {userName ? userName.substring(0, 2).toUpperCase() : 'U'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Barre d'adresse style Barre de Recherche Airbnb Premium */}
+      {address?.formattedAddress && (
+        <Pressable
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onPress={onRefreshLocation}
+          style={styles.addressPressable}
+        >
+          <Animated.View style={[styles.addressCard, { transform: [{ scale }] }]}>
+            <View style={styles.searchIconCircle}>
+              <Ionicons name="location" size={16} color={COLORS.blumine[950]} />
+            </View>
+            
+            <View style={styles.addressInfo}>
+              <Text style={styles.locationTitle}>Où vous situez-vous ?</Text>
+              <Text style={styles.addressText} numberOfLines={1}>
+                {address.formattedAddress}
+              </Text>
+            </View>
+
+            <View style={styles.refreshBadge}>
+              <Ionicons name="refresh" size={14} color={COLORS.gray[500]} />
+            </View>
+          </Animated.View>
+        </Pressable>
       )}
     </View>
   )
@@ -34,66 +79,104 @@ export default function HomeHeader({ userName, address, onRefreshLocation }) {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 56 : 20,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 60 : 24,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[50], // Séparation invisible et propre
   },
   headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
   welcomeText: { 
-    fontSize: 13, 
-    color: '#717171', 
-    fontWeight: '500',
-    marginBottom: 2,
+    fontSize: 12, 
+    color: COLORS.gray[400], 
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
   userName: { 
-    fontSize: 24, 
+    fontSize: 26, 
     fontWeight: '800', 
-    color: '#1A1A1A',
-    letterSpacing: -0.5 
+    color: COLORS.blumine[950],
+    letterSpacing: -0.7,
   },
-  
-  // --- BOUTON FLOTTANT PREMIUM ---
-  locationCircleButton: { 
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
+  dot: {
+    color: COLORS.dixie[500],
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.blumine[950],
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#EAEAEA',
-    
-    // Petite ombre subtile pour le relief
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: COLORS.gray[100],
+  },
+  avatarText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 
-  // --- CAPSULE D'ADRESSE AIRBNB ---
-  addressCapsule: { 
+  /* --- BARRE D'ADRESSE AIRBNB LUXE --- */
+  addressPressable: {
+    width: '100%',
+  },
+  addressCard: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#F7F7F7', // Fond gris très doux moderne
-    paddingHorizontal: 14, 
-    paddingVertical: 10, 
-    borderRadius: 20, // Style pilule
-    marginTop: 16, 
-    gap: 8,
+    backgroundColor: COLORS.white,
+    paddingVertical: 12, 
+    paddingHorizontal: 14,
+    borderRadius: 100, // Forme capsule parfaite
+    gap: 12,
     borderWidth: 1,
-    borderColor: '#EDEDED',
+    borderColor: COLORS.gray[100],
+    
+    // Ombre de carte flottante type Airbnb
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  searchIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.gray[50],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addressInfo: {
+    flex: 1,
+  },
+  locationTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.blumine[950],
+    marginBottom: 1,
   },
   addressText: { 
-    fontSize: 13, 
-    color: '#555555', 
+    fontSize: 12, 
+    color: COLORS.gray[500], 
     fontWeight: '500',
-    flex: 1 
+  },
+  refreshBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
+    backgroundColor: COLORS.white,
   },
 })

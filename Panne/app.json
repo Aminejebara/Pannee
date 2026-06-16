@@ -16,8 +16,14 @@
         "googleMapsApiKey": "AIzaSyAmnxE-yT8o9qhOUyWfPfSE6S1vgO8DrjI"
       },
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Accès à vos photos pour votre photo de profil.",
-        "NSCameraUsageDescription": "Accès à votre caméra pour votre photo de profil."
+        "NSPhotoLibraryUsageDescription": "Acces a vos photos pour votre photo de profil.",
+        "NSCameraUsageDescription": "Acces a votre camera pour votre photo de profil.",
+        "NSLocationWhenInUseUsageDescription": "Cette application a besoin de votre position pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Cette application a besoin de votre position en arriere-plan pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+        "NSLocationAlwaysUsageDescription": "Cette application a besoin de votre position en arriere-plan pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -40,8 +46,14 @@
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -62,17 +74,14 @@
         }
       ],
       "expo-web-browser",
-
-      
       [
         "expo-image-picker",
         {
-          "photosPermission": "L'application accède à vos photos pour votre photo de profil.",
-          "cameraPermission": "L'application accède à votre caméra pour votre photo de profil.",
+          "photosPermission": "L'application accede a vos photos pour votre photo de profil.",
+          "cameraPermission": "L'application accede a votre camera pour votre photo de profil.",
           "microphonePermission": false
         }
       ],
-
       [
         "@react-native-google-signin/google-signin",
         {
@@ -92,6 +101,27 @@
           "ios": {
             "deploymentTarget": "15.1"
           }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Cette application a besoin de votre position en arriere-plan pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+          "locationAlwaysPermission": "Cette application a besoin de votre position en arriere-plan pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+          "locationWhenInUsePermission": "Cette application a besoin de votre position pour mettre a jour votre localisation et permettre aux clients de vous trouver.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#FFD200",
+          "sounds": ["./assets/sounds/notification.wav"],
+          "androidMode": "default",
+          "androidCollapsedTitle": "Nouveau message",
+          "iosDisplayInForeground": true
         }
       ]
     ],

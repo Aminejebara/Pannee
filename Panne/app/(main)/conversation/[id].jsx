@@ -47,7 +47,15 @@ function ConversationDetailInner() {
   const userHook = useUser()
   const proHook = usePro()
   const hook = isPro ? proHook : userHook
-  const { getMessages, markConversationAsRead, uploadMessageImage, sendMessage: sendMessageHttp, loading } = hook
+  const { 
+    getMessages, 
+    markConversationAsRead, 
+    uploadMessageImage, 
+    sendMessage: sendMessageHttp,
+    unsendMessage,
+    unsendAllMessages,
+    loading 
+  } = hook
 
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
@@ -56,6 +64,8 @@ function ConversationDetailInner() {
   const [isTyping, setIsTyping] = useState(false)
   const [otherUserTyping, setOtherUserTyping] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
+  const [selectedMessage, setSelectedMessage] = useState(null)
+  const [showMessageOptions, setShowMessageOptions] = useState(false)
   const scrollViewRef = useRef()
   const typingTimeoutRef = useRef(null)
   const messagesCountRef = useRef(0)
@@ -133,14 +143,31 @@ function ConversationDetailInner() {
       }
     }
 
+    // 🆕 EVENEMENTS UNSEND
+    const handleMessageUnsent = (data) => {
+      if (String(data.conversationId) === String(conversationId)) {
+        setMessages(prev => prev.filter(m => m.id !== data.messageId))
+      }
+    }
+
+    const handleMessagesUnsentAll = (data) => {
+      if (String(data.conversationId) === String(conversationId)) {
+        setMessages(prev => prev.filter(m => m.sender_id !== data.unsentBy))
+      }
+    }
+
     socket.on('receive_message', handleReceiveMessage)
     socket.on('message_sent', handleMessageSent)
     socket.on('user_typing', handleUserTyping)
+    socket.on('message_unsent', handleMessageUnsent)
+    socket.on('messages_unsent_all', handleMessagesUnsentAll)
 
     return () => {
       socket.off('receive_message', handleReceiveMessage)
       socket.off('message_sent', handleMessageSent)
       socket.off('user_typing', handleUserTyping)
+      socket.off('message_unsent', handleMessageUnsent)
+      socket.off('messages_unsent_all', handleMessagesUnsentAll)
     }
   }, [conversationId, user?.id])
 
@@ -228,32 +255,33 @@ function ConversationDetailInner() {
       )
     }
   }
-const openCamera = async () => {
-  const { status } = await ImagePicker.requestCameraPermissionsAsync()
-  if (status !== 'granted') {
-    Alert.alert('Permission', 'Accès à la caméra nécessaire')
-    return
-  }
-  const result = await ImagePicker.launchCameraAsync({ 
-    allowsEditing: false,  // ✅
-    quality: 0.7 
-  })
-  if (!result.canceled) await sendImage(result.assets[0].uri)
-}
 
-const openGallery = async () => {
-  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-  if (status !== 'granted') {
-    Alert.alert('Permission', 'Accès à la galerie nécessaire')
-    return
+  const openCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission', 'Accès à la caméra nécessaire')
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({ 
+      allowsEditing: false,
+      quality: 0.7 
+    })
+    if (!result.canceled) await sendImage(result.assets[0].uri)
   }
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: false,  // ✅
-    quality: 0.7,
-  })
-  if (!result.canceled) await sendImage(result.assets[0].uri)
-}
+
+  const openGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission', 'Accès à la galerie nécessaire')
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.7,
+    })
+    if (!result.canceled) await sendImage(result.assets[0].uri)
+  }
   
   const sendImage = async (uri) => {
     const tempId = `temp_${Date.now()}_${Math.random()}`
@@ -356,6 +384,84 @@ const openGallery = async () => {
     else typingTimeoutRef.current = setTimeout(() => handleTyping(false), 1500)
   }
 
+  // ============================================================
+  // 🆕 GESTION UNSEND
+  // ============================================================
+
+  const handleLongPressMessage = (message) => {
+    const isOwnMessage = isPro ? message.sender_type === 'professional' : message.sender_type === 'user'
+    if (!isOwnMessage) return
+    if (message.is_temp) return
+    
+    setSelectedMessage(message)
+    setShowMessageOptions(true)
+  }
+
+  const handleUnsendMessage = async () => {
+    if (!selectedMessage) return
+
+    Alert.alert(
+      'Supprimer ce message',
+      'Voulez-vous vraiment supprimer ce message ?\n\nIl sera supprimé pour tout le monde.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Supprimer', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Optimistic update
+              const messageId = selectedMessage.id
+              setMessages(prev => prev.filter(m => m.id !== messageId))
+              setShowMessageOptions(false)
+              setSelectedMessage(null)
+
+              const result = await unsendMessage(messageId)
+              if (!result.success) {
+                // En cas d'erreur, remettre le message
+                setMessages(prev => [...prev, selectedMessage])
+                Alert.alert('Erreur', result.error || 'Impossible de supprimer le message')
+              }
+            } catch (error) {
+              setMessages(prev => [...prev, selectedMessage])
+              Alert.alert('Erreur', 'Une erreur est survenue')
+            }
+          }
+        }
+      ]
+    )
+  }
+
+  const handleUnsendAllMessages = async () => {
+    Alert.alert(
+      'Supprimer tous vos messages',
+      `Voulez-vous vraiment supprimer tous vos messages de cette conversation ?\n\nCette action est irreversible et les messages seront supprimes pour tout le monde.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Supprimer tout', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await unsendAllMessages(conversationId)
+              if (result.success) {
+                setMessages(prev => prev.filter(m => {
+                  const isOwn = isPro ? m.sender_type === 'professional' : m.sender_type === 'user'
+                  return !isOwn
+                }))
+                Alert.alert('Succes', `${result.affectedCount} message(s) supprime(s)`)
+              } else {
+                Alert.alert('Erreur', result.error || 'Impossible de supprimer les messages')
+              }
+            } catch (error) {
+              Alert.alert('Erreur', 'Une erreur est survenue')
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const formatTime = (dateString) => {
     if (!dateString) return ''
     return new Date(dateString).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -368,59 +474,66 @@ const openGallery = async () => {
     const isTemp = item.is_temp
 
     return (
-      <View key={item.id || index} style={[
-        styles.messageRow,
-        isOwnMessage ? styles.messageRowRight : styles.messageRowLeft
-      ]}>
+      <TouchableOpacity
+        key={item.id || index}
+        onLongPress={() => handleLongPressMessage(item)}
+        activeOpacity={0.7}
+        disabled={!isOwnMessage || isTemp}
+      >
         <View style={[
-          styles.messageBubble,
-          isOwnMessage ? styles.messageBubbleOwn : styles.messageBubbleOther,
-          isTemp && styles.tempBubble,
-          isImage && styles.imageBubble
+          styles.messageRow,
+          isOwnMessage ? styles.messageRowRight : styles.messageRowLeft
         ]}>
-          {isImage ? (
-            <TouchableOpacity onPress={() => !isTemp && setSelectedImage(item.content)} activeOpacity={0.9}>
-              <Image source={{ uri: item.content }} style={styles.messageImage} />
-              {isTemp && (
-                <View style={styles.imageUploadingOverlay}>
-                  <ActivityIndicator size="small" color="#fff" />
+          <View style={[
+            styles.messageBubble,
+            isOwnMessage ? styles.messageBubbleOwn : styles.messageBubbleOther,
+            isTemp && styles.tempBubble,
+            isImage && styles.imageBubble
+          ]}>
+            {isImage ? (
+              <TouchableOpacity onPress={() => !isTemp && setSelectedImage(item.content)} activeOpacity={0.9}>
+                <Image source={{ uri: item.content }} style={styles.messageImage} />
+                {isTemp && (
+                  <View style={styles.imageUploadingOverlay}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : isLocation ? (
+              <TouchableOpacity onPress={() => openLocationInMaps(item.content)} activeOpacity={0.7}>
+                <View style={styles.locationMessage}>
+                  <View style={[styles.locationIcon, isOwnMessage && styles.locationIconOwn]}>
+                    <Ionicons name="location" size={18} color={isOwnMessage ? '#fff' : COLORS.blumine[600]} />
+                  </View>
+                  <View>
+                    <Text style={[styles.messageText, isOwnMessage ? styles.messageTextOwn : styles.messageTextOther, { fontWeight: '600' }]}>
+                      Position partagée
+                    </Text>
+                    <Text style={[styles.locationSubtext, isOwnMessage ? { color: 'rgba(255,255,255,0.7)' } : { color: COLORS.blumine[600] }]}>
+                      Appuyer pour ouvrir Maps
+                    </Text>
+                  </View>
                 </View>
-              )}
-            </TouchableOpacity>
-          ) : isLocation ? (
-            <TouchableOpacity onPress={() => openLocationInMaps(item.content)} activeOpacity={0.7}>
-              <View style={styles.locationMessage}>
-                <View style={[styles.locationIcon, isOwnMessage && styles.locationIconOwn]}>
-                  <Ionicons name="location" size={18} color={isOwnMessage ? '#fff' : COLORS.blumine[600]} />
-                </View>
-                <View>
-                  <Text style={[styles.messageText, isOwnMessage ? styles.messageTextOwn : styles.messageTextOther, { fontWeight: '600' }]}>
-                    Position partagée
-                  </Text>
-                  <Text style={[styles.locationSubtext, isOwnMessage ? { color: 'rgba(255,255,255,0.7)' } : { color: COLORS.blumine[600] }]}>
-                    Appuyer pour ouvrir Maps
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.messageText, isOwnMessage ? styles.messageTextOwn : styles.messageTextOther]}>
-              {item.content}
-            </Text>
-          )}
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.messageText, isOwnMessage ? styles.messageTextOwn : styles.messageTextOther]}>
+                {item.content}
+              </Text>
+            )}
 
-          {!isImage && (
-            <Text style={[styles.messageTime, isOwnMessage ? styles.timeOwn : styles.timeOther]}>
-              {isTemp ? 'Envoi...' : formatTime(item.created_at)}
-            </Text>
-          )}
-          {isImage && !isTemp && (
-            <Text style={[styles.messageTime, styles.timeOwn, { position: 'absolute', bottom: 6, right: 10 }]}>
-              {formatTime(item.created_at)}
-            </Text>
-          )}
+            {!isImage && (
+              <Text style={[styles.messageTime, isOwnMessage ? styles.timeOwn : styles.timeOther]}>
+                {isTemp ? 'Envoi...' : formatTime(item.created_at)}
+              </Text>
+            )}
+            {isImage && !isTemp && (
+              <Text style={[styles.messageTime, styles.timeOwn, { position: 'absolute', bottom: 6, right: 10 }]}>
+                {formatTime(item.created_at)}
+              </Text>
+            )}
+          </View>
         </View>
-      </View>
+      </TouchableOpacity>
     )
   }
 
@@ -435,14 +548,12 @@ const openGallery = async () => {
 
   return (
     <View style={styles.container}>
-      {/* StatusBar explicite — critique sur Android */}
       <StatusBar
         barStyle="dark-content"
         backgroundColor="#FFFFFF"
         translucent={false}
       />
 
-      {/* ─── Header — respecte le safe area top ─────────── */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.6}>
           <Ionicons name="chevron-back" size={24} color={COLORS.black} />
@@ -474,15 +585,11 @@ const openGallery = async () => {
         >
           <Ionicons name="call" size={20} color="#FFFFFF" />
         </TouchableOpacity>
+
+        {/* 🆕 Bouton pour supprimer tous les messages */}
+
       </View>
 
-      {/*
-        ─── KeyboardAvoidingView ────────────────────────────
-        Sur Android : behavior="height" est le plus stable.
-        Sur iOS     : behavior="padding" avec un offset = hauteur header.
-        On englobe ScrollView + InputSection ensemble pour que
-        l'input ne "saute" pas mais que tout remonte d'un bloc.
-      */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -493,8 +600,6 @@ const openGallery = async () => {
           style={styles.messagesContainer}
           contentContainerStyle={[
             styles.messagesContent,
-            // Ajoute un padding bas pour ne pas que le dernier msg
-            // soit caché par la barre de nav Android
             { paddingBottom: Math.max(insets.bottom, 8) }
           ]}
           showsVerticalScrollIndicator={false}
@@ -513,10 +618,8 @@ const openGallery = async () => {
           )}
         </ScrollView>
 
-        {/* ─── Input ─────────────────────────────────────── */}
         <View style={[
           styles.inputSection,
-          // Respecte la nav bar Android (gesture nav ou boutons)
           { paddingBottom: Math.max(insets.bottom, 10) }
         ]}>
           <View style={styles.inputWrapper}>
@@ -539,7 +642,6 @@ const openGallery = async () => {
               onChangeText={onTextChange}
               multiline
               editable={!sending}
-              // Empêche Android de scroller la page au focus
               underlineColorAndroid="transparent"
             />
 
@@ -554,6 +656,64 @@ const openGallery = async () => {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 🆕 MODAL OPTIONS MESSAGE */}
+      <Modal
+        transparent={true}
+        visible={showMessageOptions}
+        animationType="fade"
+        onRequestClose={() => setShowMessageOptions(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowMessageOptions(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Options du message</Text>
+                  <TouchableOpacity onPress={() => setShowMessageOptions(false)}>
+                    <Ionicons name="close" size={24} color={COLORS.black} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalDivider} />
+
+                <TouchableOpacity 
+                  style={styles.modalOption}
+                  onPress={handleUnsendMessage}
+                >
+                  <View style={[styles.modalOptionIcon, { backgroundColor: '#FEE2E2' }]}>
+                    <Ionicons name="trash-outline" size={22} color="#DC2626" />
+                  </View>
+                  <View style={styles.modalOptionTextContainer}>
+                    <Text style={[styles.modalOptionText, { color: '#DC2626' }]}>
+                      Supprimer pour tout le monde
+                    </Text>
+                    <Text style={styles.modalOptionSubtext}>
+                      Le message disparaîtra pour vous et le destinataire
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.modalOption, styles.modalOptionLast]}
+                  onPress={() => {
+                    setShowMessageOptions(false)
+                    setSelectedMessage(null)
+                  }}
+                >
+                  <View style={[styles.modalOptionIcon, { backgroundColor: '#E5E7EB' }]}>
+                    <Ionicons name="close-outline" size={22} color={COLORS.black} />
+                  </View>
+                  <View style={styles.modalOptionTextContainer}>
+                    <Text style={styles.modalOptionText}>Annuler</Text>
+                    <Text style={styles.modalOptionSubtext}>Fermer les options</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* ─── Modal image plein écran ─────────────────────── */}
       <Modal visible={!!selectedImage} transparent animationType="fade" statusBarTranslucent>
@@ -583,8 +743,6 @@ const openGallery = async () => {
   )
 }
 
-// Wrapper qui fournit SafeAreaProvider au cas où il n'est pas
-// déjà fourni plus haut dans l'arbre de navigation
 export default function ConversationDetail() {
   return (
     <SafeAreaProvider>
@@ -622,12 +780,9 @@ const styles = StyleSheet.create({
   headerAvatarPlaceholder: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#000000',
-    
     alignItems: 'center', justifyContent: 'center',
   },
-  headerAvatarText: { fontSize: 15, fontWeight: '700', color:
-    '#FFFFFF'
-   },
+  headerAvatarText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   headerInfo: { flex: 1, marginLeft: 10 },
   headerName: { fontSize: 16, fontWeight: '600', color: '#000' },
   headerPhone: { fontSize: 12, color: COLORS.gray[400], marginTop: 1 },
@@ -636,19 +791,24 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: COLORS.blumine[600],
+    marginRight: 8,
   },
   callButtonDisabled: {
     backgroundColor: COLORS.blumine[200],
     opacity: 0.5,
+  },
+  deleteAllButton: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
   },
 
   // ─── Messages ──────────────────────────────────────────────
   messagesContainer: { flex: 1, backgroundColor: '#FAFAFA' },
   messagesContent: { paddingHorizontal: 16, paddingTop: 20 },
   messageRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end' },
-  messageRowLeft: { justifyContent: 'flex-start', marginLeft: 4 }, // petit décalage pour compenser l'absence d'avatar
+  messageRowLeft: { justifyContent: 'flex-start', marginLeft: 4 },
   messageRowRight: { justifyContent: 'flex-end' },
-  // avatar supprimé, plus besoin des styles associés
 
   messageBubble: { maxWidth: '75%', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18 },
   messageBubbleOwn: { backgroundColor: COLORS.blumine[600], borderBottomRightRadius: 4 },
@@ -740,5 +900,68 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
+  },
+
+  // ─── Modal options message ────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    paddingTop: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.black,
+    flex: 1,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#EBEBEB',
+    marginVertical: 12,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  modalOptionLast: {
+    borderBottomWidth: 0,
+  },
+  modalOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  modalOptionTextContainer: {
+    flex: 1,
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.black,
+  },
+  modalOptionSubtext: {
+    fontSize: 13,
+    color: COLORS.gray[500],
+    marginTop: 2,
   },
 })

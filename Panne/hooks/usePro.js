@@ -153,31 +153,160 @@ export const usePro = () => {
   }
 
   const getReviews = async (professionalId, page = 1, limit = 10) => {
-  setLoading(true)
-  try {
-    const data = await proService.getReviews(professionalId, page, limit)
-    return { success: true, reviews: data.data, pagination: data.pagination }
-  } catch (error) {
-    return { success: false, error: error.response?.data?.message }
-  } finally {
-    setLoading(false)
+    setLoading(true)
+    try {
+      const data = await proService.getReviews(professionalId, page, limit)
+      return { success: true, reviews: data.data, pagination: data.pagination }
+    } catch (error) {
+      return { success: false, error: error.response?.data?.message }
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
-
-
-// ─── Localisation ─────────────────────────────────────────
-const updateProLocation = async (professionalId, lat, lng, address, city, country) => {
-  setLoading(true)
-  try {
-    const data = await proService.updateLocation(professionalId, { lat, lng, address, city, country })
-    return { success: true, message: data.message, location: data.location }
-  } catch (error) {
-    return { success: false, error: error.response?.data?.message }
-  } finally {
-    setLoading(false)
+  // ─── Localisation ─────────────────────────────────────────
+  const updateProLocation = async (professionalId, lat, lng, address, city, country) => {
+    setLoading(true)
+    try {
+      const data = await proService.updateLocation(professionalId, { lat, lng, address, city, country })
+      return { success: true, message: data.message, location: data.location }
+    } catch (error) {
+      return { success: false, error: error.response?.data?.message }
+    } finally {
+      setLoading(false)
+    }
   }
-}
+
+  // ============================================================
+  // 🆕 UNSEND - SUPPRIMER POUR TOUT LE MONDE
+  // ============================================================
+
+  /**
+   * UNSEND un message (supprime pour tout le monde)
+   * @param {number} messageId - ID du message a unsend
+   * @returns {Promise} - Reponse du serveur
+   */
+  const unsendMessage = async (messageId) => {
+    setLoading(true)
+    try {
+      const data = await proService.unsendMessage(messageId)
+      return { 
+        success: true, 
+        message: data.message,
+        data: data.data 
+      }
+    } catch (error) {
+      console.error('unsendMessage error:', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Erreur lors de la suppression du message' 
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * UNSEND tous les messages d'une conversation
+   * @param {number} conversationId - ID de la conversation
+   * @returns {Promise} - Reponse du serveur
+   */
+  const unsendAllMessages = async (conversationId) => {
+    setLoading(true)
+    try {
+      const data = await proService.unsendAllMessages(conversationId)
+      return { 
+        success: true, 
+        message: data.message,
+        affectedCount: data.affectedCount 
+      }
+    } catch (error) {
+      console.error('unsendAllMessages error:', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Erreur lors de la suppression des messages' 
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * Recuperer les messages UNSEND d'une conversation (audit)
+   * @param {number} conversationId - ID de la conversation
+   * @returns {Promise} - Liste des messages unsend
+   */
+  const getUnsentMessages = async (conversationId) => {
+    setLoading(true)
+    try {
+      const data = await proService.getUnsentMessages(conversationId)
+      return { 
+        success: true, 
+        messages: data.data,
+        count: data.count 
+      }
+    } catch (error) {
+      console.error('getUnsentMessages error:', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Erreur lors de la recuperation des messages unsend' 
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ============================================================
+  // 🆕 NOTIFICATIONS PUSH
+  // ============================================================
+
+  /**
+   * Enregistrer le token push
+   * @param {string} pushToken - Token Expo Push
+   * @param {string} deviceType - 'ios' ou 'android'
+   * @returns {Promise} - Reponse du serveur
+   */
+  const registerPushToken = async (pushToken, deviceType) => {
+    setLoading(true)
+    try {
+      const data = await proService.registerPushToken(pushToken, deviceType)
+      return { 
+        success: true, 
+        message: data.message 
+      }
+    } catch (error) {
+      console.error('registerPushToken error:', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Erreur lors de l\'enregistrement du token' 
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * Désactiver le token push
+   * @returns {Promise} - Reponse du serveur
+   */
+  const deactivatePushToken = async () => {
+    setLoading(true)
+    try {
+      const data = await proService.deactivatePushToken()
+      return { 
+        success: true, 
+        message: data.message 
+      }
+    } catch (error) {
+      console.error('deactivatePushToken error:', error)
+      return { 
+        success: false, 
+        error: error.response?.data?.message || 'Erreur lors de la désactivation du token' 
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return { 
     loading, 
@@ -200,6 +329,13 @@ const updateProLocation = async (professionalId, lat, lng, address, city, countr
     uploadMessageImage,
     getReviews,
     // Localisation
-    updateProLocation
+    updateProLocation,
+    // 🆕 UNSEND
+    unsendMessage,
+    unsendAllMessages,
+    getUnsentMessages,
+    // 🆕 NOTIFICATIONS PUSH
+    registerPushToken,
+    deactivatePushToken
   }
 }

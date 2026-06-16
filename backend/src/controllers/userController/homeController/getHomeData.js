@@ -17,7 +17,7 @@ export const getHomeData = async (req, res) => {
                AND (starts_at IS NULL OR starts_at <= NOW())
                AND (ends_at IS NULL OR ends_at >= NOW())
              ORDER BY priority DESC 
-             LIMIT 5`
+             LIMIT 10`
         );
 
         // 2. Récupérer toutes les catégories de services
@@ -161,7 +161,7 @@ export const getHomeData = async (req, res) => {
                AND (starts_at IS NULL OR starts_at <= NOW())
                AND (ends_at IS NULL OR ends_at >= NOW())
              ORDER BY priority DESC 
-             LIMIT 3`
+             LIMIT 5`
         );
 
         // Structurer la réponse

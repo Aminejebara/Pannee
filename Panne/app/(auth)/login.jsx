@@ -125,13 +125,19 @@ export default function LoginScreen() {
             <Text style={styles.secondaryButtonText}>Créer un compte client</Text>
           </TouchableOpacity>
 
+          {/* Section Pro Améliorée - Style Card Premium et Visible */}
           <TouchableOpacity 
-            style={styles.proLink} 
+            style={styles.proCard} 
             onPress={() => router.push('/(auth)/register-pro')}
+            activeOpacity={0.9}
           >
-            <Text style={styles.proText}>
-              Vous êtes un dépanneur ? <Text style={styles.proTextBold}>Inscrivez-vous ici</Text>
-            </Text>
+            <View style={styles.proCardContent}>
+              <Text style={styles.proCardTitle}>Vous êtes un dépanneur ?</Text>
+              <Text style={styles.proCardSubtitle}>Rejoignez notre réseau et développez votre activité</Text>
+            </View>
+            <View style={styles.proCardBadge}>
+              <Text style={styles.proCardBadgeText}>Inscrivez-vous</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -211,8 +217,49 @@ const styles = StyleSheet.create({
   dividerContainer: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 24 },
   divider: { flex: 1, height: 1, backgroundColor: COLORS.gray[200] },
   dividerText: { marginHorizontal: 16, color: COLORS.gray[500], fontSize: 12, fontWeight: '600' },
-  secondaryButton: { width: '100%', paddingVertical: 14, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.black, alignItems: 'center', marginBottom: 24 },
+  secondaryButton: { width: '100%', paddingVertical: 14, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.black, alignItems: 'center', marginBottom: 20 },
   secondaryButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.black },
-  proText: { fontSize: 14, color: COLORS.gray[600], textAlign: 'center' },
-  proTextBold: { color: COLORS.blumine[600], fontWeight: '700' },
+
+  /* Nouveaux styles pour la section Pro améliorée */
+  proCard: {
+    width: '100%',
+    backgroundColor: COLORS.blumine[950],
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  proCardContent: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  proCardTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  proCardSubtitle: {
+    color: COLORS.gray[400],
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  proCardBadge: {
+    backgroundColor: COLORS.dixie[500],
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  proCardBadgeText: {
+    color: COLORS.blumine[950],
+    fontSize: 12,
+    fontWeight: '700',
+  },
 })

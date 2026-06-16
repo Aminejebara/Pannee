@@ -89,13 +89,18 @@ const takePhoto = async () => {
   })
   if (!result.canceled) handleUpload(result.assets[0].uri)
 }
+// ✅ Supprime cet import — ligne 9
+// import * as FileSystem from 'expo-file-system/legacy'
+
 const handleUpload = async (uri) => {
   try {
-    const fileName = uri.split('/').pop()
-    const destUri = FileSystem.documentDirectory + fileName
-    await FileSystem.copyAsync({ from: uri, to: destUri })
-
-    const uploadResult = await uploadAvatar(destUri)
+    const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator')
+    const compressed = await manipulateAsync(
+      uri,
+      [{ resize: { width: 400 } }],
+      { compress: 0.5, format: SaveFormat.JPEG }
+    )
+    const uploadResult = await uploadAvatar(compressed.uri)
     if (uploadResult.success) {
       setLocalAvatar(uploadResult.avatar_url + '?t=' + Date.now())
       loadProfile()
@@ -107,7 +112,6 @@ const handleUpload = async (uri) => {
     Alert.alert('Erreur', "Impossible d'uploader l'image")
   }
 }
-
   const handleLogout = () => {
     Alert.alert('Déconnexion', 'Voulez-vous vraiment quitter ?', [
       { text: 'Annuler', style: 'cancel' },

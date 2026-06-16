@@ -1,13 +1,31 @@
+// hooks/useAuth.js - CORRIGÉ
+
 import { useState, useEffect } from 'react'
 import useAuthStore from '../store/useAuthStore'
 import { authService } from '../services/auth/authService'
 import { connectSocket, disconnectSocket } from '../services/socketService'
+import { registerPushToken, deactivatePushToken, setupNotificationListeners } from '../services/notificationService'
 
 export const useAuth = () => {
   const [loading, setLoading] = useState(false)
   const { user, professional, accessToken, refreshToken, isAuthenticated, error, setAuth, logout: storeLogout, setError } = useAuthStore()
 
-  // Connecter/déconnecter le socket selon l'authentification
+  // ✅ Enregistrer le token push quand l'utilisateur est authentifié
+  useEffect(() => {
+    const setupPushNotifications = async () => {
+      // ✅ Vérifier que user existe bien
+      if (isAuthenticated && accessToken && user && user.id) {
+        console.log('🔑 Enregistrement du token push pour:', user.role)
+        const token = await registerPushToken()
+        console.log('🔑 Token enregistré:', token)
+      } else {
+        console.log('⚠️ Pas de user, pas d\'enregistrement token')
+      }
+    }
+    setupPushNotifications()
+  }, [isAuthenticated, accessToken, user])
+
+  // Connecter/déconnecter le socket
   useEffect(() => {
     if (isAuthenticated && accessToken) {
       connectSocket()
@@ -25,7 +43,16 @@ export const useAuth = () => {
     try {
       const data = await authService.login(email, password, location)
       console.log('Login response:', data)
+      
+      // ✅ D'abord setAuth
       setAuth(data.user, data.professional, data.accessToken, data.refreshToken)
+      
+      // ✅ Ensuite enregistrer le token push (avec un délai)
+      setTimeout(async () => {
+        console.log('🔑 Login - Enregistrement token push...')
+        await registerPushToken()
+      }, 1000)
+      
       return { success: true, user: data.user, professional: data.professional }
     } catch (error) {
       console.error('Login error full:', error)
@@ -78,7 +105,16 @@ export const useAuth = () => {
     setLoading(true)
     try {
       const data = await authService.verifyOTP(email, code)
+      
+      // ✅ D'abord setAuth
       setAuth(data.user, data.professional, data.accessToken, data.refreshToken)
+      
+      // ✅ Ensuite enregistrer le token push
+      setTimeout(async () => {
+        console.log('🔑 OTP - Enregistrement token push...')
+        await registerPushToken()
+      }, 1000)
+      
       return { success: true, user: data.user, professional: data.professional }
     } catch (error) {
       console.error('OTP error:', error.response?.data)
@@ -94,7 +130,16 @@ export const useAuth = () => {
     setLoading(true)
     try {
       const data = await authService.googleAuth(idToken)
+      
+      // ✅ D'abord setAuth
       setAuth(data.user, data.professional, data.accessToken, data.refreshToken)
+      
+      // ✅ Ensuite enregistrer le token push
+      setTimeout(async () => {
+        console.log('🔑 Google Auth - Enregistrement token push...')
+        await registerPushToken()
+      }, 1000)
+      
       return { success: true, user: data.user, professional: data.professional }
     } catch (error) {
       console.error('Google auth error:', error.response?.data)
@@ -111,6 +156,10 @@ export const useAuth = () => {
     try {
       const currentRefreshToken = useAuthStore.getState().refreshToken
       if (currentRefreshToken) await authService.logout(currentRefreshToken)
+      
+      // ✅ Désactiver le token push
+      await deactivatePushToken()
+      
     } catch (error) { 
       console.error('Logout error:', error)
     } finally { 

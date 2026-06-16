@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 // Détecter si on est sur web
 const isWeb = typeof window !== 'undefined' && window.localStorage
@@ -25,8 +26,7 @@ const getStorage = () => {
       },
     }
   } else {
-    // Sur mobile : utiliser AsyncStorage
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default
+    // Sur mobile : utiliser AsyncStorage (importé en haut)
     return AsyncStorage
   }
 }
@@ -42,15 +42,23 @@ const useAuthStore = create(
       isLoading: true,
       error: null,
 
-      setAuth: (user, professional, accessToken, refreshToken) => set({
-        user, 
-        professional: professional || null, 
-        accessToken, 
-        refreshToken, 
-        isAuthenticated: true, 
-        isLoading: false,
-        error: null
-      }),
+      setAuth: (user, professional, accessToken, refreshToken) => {
+        console.log('🔐 setAuth appelé:', { 
+          user: user?.username || user?.email, 
+          professional: professional?.business_name || null,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken
+        })
+        set({
+          user, 
+          professional: professional || null, 
+          accessToken, 
+          refreshToken, 
+          isAuthenticated: true, 
+          isLoading: false,
+          error: null
+        })
+      },
       
       setTokens: (accessToken, refreshToken) => set({ 
         accessToken, 
@@ -63,15 +71,18 @@ const useAuthStore = create(
       
       setError: (error) => set({ error }),
       
-      logout: () => set({ 
-        user: null, 
-        professional: null, 
-        accessToken: null, 
-        refreshToken: null, 
-        isAuthenticated: false, 
-        isLoading: false,
-        error: null 
-      }),
+      logout: () => {
+        console.log('🔴 logout appelé - nettoyage du store')
+        set({ 
+          user: null, 
+          professional: null, 
+          accessToken: null, 
+          refreshToken: null, 
+          isAuthenticated: false, 
+          isLoading: false,
+          error: null 
+        })
+      },
       
       clearAuth: () => set({ 
         user: null, 

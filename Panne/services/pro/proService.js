@@ -2,13 +2,13 @@ import api from '../axios'
 
 export const proService = {
 
-
   async getReviews(professionalId, page = 1, limit = 10) {
-  const response = await api.get(`/pro/profile/${professionalId}/reviews`, {
-    params: { page, limit }
-  })
-  return response.data
-},
+    const response = await api.get(`/pro/profile/${professionalId}/reviews`, {
+      params: { page, limit }
+    })
+    return response.data
+  },
+
   // ─── Profile ─────────────────────────────────────────────
   async getProfile(professionalId) {
     const response = await api.get(`/pro/profile/${professionalId}`)
@@ -75,11 +75,10 @@ export const proService = {
     return response.data
   },
 
-  // Dans services/pro/proService.js
-updateLocation: async (professionalId, locationData) => {
-  const response = await api.put(`/pro/profile/${professionalId}/location`, locationData)
-  return response.data
-},
+  async updateLocation(professionalId, locationData) {
+    const response = await api.put(`/pro/profile/${professionalId}/location`, locationData)
+    return response.data
+  },
   
   async markConversationAsRead(conversationId) {
     const response = await api.put(`/pro/conversations/${conversationId}/read`)
@@ -100,8 +99,6 @@ updateLocation: async (professionalId, locationData) => {
       type: 'image/jpeg',
     });
 
-    
-
     const response = await api.post('/pro/upload/message-image', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -109,4 +106,65 @@ updateLocation: async (professionalId, locationData) => {
     });
     return response.data;
   },
+
+  // ============================================================
+  // 🆕 UNSEND - SUPPRIMER POUR TOUT LE MONDE
+  // ============================================================
+
+  /**
+   * UNSEND un message (supprime pour tout le monde)
+   * @param {number} messageId - ID du message a unsend
+   * @returns {Promise} - Reponse du serveur
+   */
+  async unsendMessage(messageId) {
+    const response = await api.delete(`/pro/messages/${messageId}/unsend`)
+    return response.data
+  },
+
+  /**
+   * UNSEND tous les messages d'une conversation
+   * @param {number} conversationId - ID de la conversation
+   * @returns {Promise} - Reponse du serveur
+   */
+  async unsendAllMessages(conversationId) {
+    const response = await api.delete(`/pro/conversations/${conversationId}/unsend-all`)
+    return response.data
+  },
+
+  /**
+   * Recuperer les messages UNSEND d'une conversation (audit)
+   * @param {number} conversationId - ID de la conversation
+   * @returns {Promise} - Liste des messages unsend
+   */
+  async getUnsentMessages(conversationId) {
+    const response = await api.get(`/pro/conversations/${conversationId}/unsent`)
+    return response.data
+  },
+
+  // ============================================================
+  // 🆕 NOTIFICATIONS PUSH
+  // ============================================================
+
+  /**
+   * Enregistrer le token push
+   * @param {string} pushToken - Token Expo Push
+   * @param {string} deviceType - 'ios' ou 'android'
+   * @returns {Promise} - Reponse du serveur
+   */
+  async registerPushToken(pushToken, deviceType) {
+    const response = await api.post('/pro/notifications/register-token', {
+      pushToken,
+      deviceType
+    })
+    return response.data
+  },
+
+  /**
+   * Désactiver le token push
+   * @returns {Promise} - Reponse du serveur
+   */
+  async deactivatePushToken() {
+    const response = await api.post('/pro/notifications/deactivate-token')
+    return response.data
+  }
 }

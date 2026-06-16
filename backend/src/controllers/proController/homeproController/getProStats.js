@@ -17,13 +17,19 @@ export const getProStats = async (req, res) => {
         
         const professionalId = pros[0].id
 
-        // 1. Nombre total de conversations
-        const [totalConv] = await pool.query(
-            `SELECT COUNT(*) as total FROM conversations WHERE professional_id = ?`,
-            [professionalId]
-        )
+        // 1. Nombre total de conversations AVEC au moins un message non unsend
+        const [totalConv] = await pool.query(`
+            SELECT COUNT(DISTINCT c.id) as total
+            FROM conversations c
+            WHERE c.professional_id = ?
+            AND EXISTS (
+                SELECT 1 FROM messages m 
+                WHERE m.conversation_id = c.id 
+                AND m.is_unsent = FALSE
+            )
+        `, [professionalId])
 
-        // 2. Messages non lus (messages des USERS non lus)
+        // 2. Messages non lus (messages des USERS non lus) ✅ FILTRE UNSEND
         const [unreadMessages] = await pool.query(`
             SELECT COUNT(*) as unread 
             FROM messages m
@@ -31,9 +37,10 @@ export const getProStats = async (req, res) => {
             WHERE c.professional_id = ? 
             AND m.sender_type = 'user'
             AND m.is_read = 0
+            AND m.is_unsent = FALSE
         `, [professionalId])
 
-        // 3. Conversations avec messages non lus
+        // 3. Conversations avec messages non lus ✅ FILTRE UNSEND
         const [conversationsWithUnread] = await pool.query(`
             SELECT COUNT(DISTINCT c.id) as count
             FROM conversations c
@@ -41,27 +48,30 @@ export const getProStats = async (req, res) => {
             WHERE c.professional_id = ?
             AND m.sender_type = 'user'
             AND m.is_read = 0
+            AND m.is_unsent = FALSE
         `, [professionalId])
 
-        // 4. Nombre total de messages reçus (des users)
+        // 4. Nombre total de messages reçus (des users) ✅ FILTRE UNSEND
         const [totalMessagesReceived] = await pool.query(`
             SELECT COUNT(*) as total
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
             WHERE c.professional_id = ?
             AND m.sender_type = 'user'
+            AND m.is_unsent = FALSE
         `, [professionalId])
 
-        // 5. Nombre total de messages envoyés (par le pro)
+        // 5. Nombre total de messages envoyés (par le pro) ✅ FILTRE UNSEND
         const [totalMessagesSent] = await pool.query(`
             SELECT COUNT(*) as total
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
             WHERE c.professional_id = ?
             AND m.sender_type = 'professional'
+            AND m.is_unsent = FALSE
         `, [professionalId])
 
-        // 6. Dernières conversations actives (7 derniers jours)
+        // 6. Dernières conversations actives (7 derniers jours) ✅ FILTRE UNSEND
         const [recentConversations] = await pool.query(`
             SELECT 
                 c.id,
@@ -73,6 +83,7 @@ export const getProStats = async (req, res) => {
                     SELECT content 
                     FROM messages 
                     WHERE conversation_id = c.id 
+                    AND is_unsent = FALSE
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message
@@ -80,6 +91,11 @@ export const getProStats = async (req, res) => {
             JOIN users u ON c.user_id = u.id
             WHERE c.professional_id = ?
             AND c.last_message_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            AND EXISTS (
+                SELECT 1 FROM messages m 
+                WHERE m.conversation_id = c.id 
+                AND m.is_unsent = FALSE
+            )
             ORDER BY c.last_message_at DESC
             LIMIT 5
         `, [professionalId])

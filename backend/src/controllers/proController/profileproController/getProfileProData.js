@@ -370,7 +370,8 @@ const uploadProAvatar = async (req, res) => {
             });
         }
 
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        //const baseUrl = 'https://pannebackend.duckdns.org';
+        const baseUrl = "http://192.168.1.48:5000"
         const avatarUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
 
         await connection.execute(

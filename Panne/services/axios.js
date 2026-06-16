@@ -1,12 +1,14 @@
 import axios from 'axios'
 import useAuthStore from '../store/useAuthStore'
 
-const API_URL = "https://panneapi.duckdns.org/api" 
+//const API_URL = "https://panneapi.duckdns.org/api" 
+
+const API_URL = "http://192.168.1.48:5000/api" // URL du backend
 
 console.log('🔵 API_URL:', API_URL)
 
 const api = axios.create({
-  baseURL:"https://pannebackend.duckdns.org/api",
+  baseURL:`${API_URL}`,
   timeout: 30000, // Augmenté à 30 secondes pour debug
   headers: { 'Content-Type': 'application/json' },
 })

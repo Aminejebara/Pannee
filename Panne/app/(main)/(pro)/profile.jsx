@@ -165,25 +165,23 @@ export default function ProProfile() {
   }
 
   // ✅ CORRIGÉ — FileSystem + anti-cache
-  const handleUpload = async (uri) => {
-    try {
-      const fileName = uri.split('/').pop()
-      const destUri = FileSystem.documentDirectory + fileName
-      await FileSystem.copyAsync({ from: uri, to: destUri })
+// ✅ Supprime aussi cet import en haut :
+// import * as FileSystem from 'expo-file-system'
 
-      const uploadResult = await uploadAvatar(professional.id, destUri)
-      if (uploadResult.success) {
-        setLocalAvatar(uploadResult.avatar_url + '?t=' + Date.now())
-        loadProfile()
-      } else {
-        Alert.alert('Erreur', "Échec de l'upload")
-      }
-    } catch (err) {
-      console.error('Upload error:', err)
-      Alert.alert('Erreur', "Impossible d'uploader l'image")
+const handleUpload = async (uri) => {
+  try {
+    const uploadResult = await uploadAvatar(professional.id, uri) // ✅ URI directe, pas de copyAsync
+    if (uploadResult.success) {
+      setLocalAvatar(uploadResult.avatar_url + '?t=' + Date.now())
+      loadProfile()
+    } else {
+      Alert.alert('Erreur', "Échec de l'upload")
     }
+  } catch (err) {
+    console.error('Upload error:', err)
+    Alert.alert('Erreur', "Impossible d'uploader l'image")
   }
-
+}
   const handleLogout = () => {
     Alert.alert('Déconnexion', 'Voulez-vous vraiment quitter ?', [
       { text: 'Annuler', style: 'cancel' },

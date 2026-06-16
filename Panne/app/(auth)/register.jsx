@@ -25,11 +25,47 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const { registerUser, loading } = useAuth()
 
+  // ─── VALIDATIONS ───────────────────────────────────────────
+  const validateEmail = (email) => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return regex.test(email)
+  }
+
+  const validatePhone = (phone) => {
+    // Numéro Tunisie : 8 chiffres (commence par 2, 5, 9) ou +216 suivi de 8 chiffres
+    const regex = /^(\+216)?[259][0-9]{7}$/
+    return regex.test(phone.replace(/\s/g, ''))
+  }
+
+  const validatePassword = (password) => {
+    return password.length >= 10
+  }
+
   const handleRegister = async () => {
+    // ─── Validation des champs ──────────────────────────────
     if (!username || !email || !password || !confirmPassword) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires')
       return
     }
+
+    // Validation email
+    if (!validateEmail(email)) {
+      Alert.alert('Erreur', 'Veuillez entrer une adresse email valide (ex: nom@domaine.com)')
+      return
+    }
+
+    // Validation téléphone (si renseigné)
+    if (phone && !validatePhone(phone)) {
+      Alert.alert('Erreur', 'Numéro de téléphone invalide')
+      return
+    }
+
+    // Validation mot de passe
+    if (!validatePassword(password)) {
+      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 10 caractères')
+      return
+    }
+
     if (password !== confirmPassword) {
       Alert.alert('Erreur', 'Les mots de passe ne correspondent pas')
       return
@@ -69,11 +105,11 @@ export default function RegisterScreen() {
             <Text style={styles.label}>NOM D'UTILISATEUR *</Text>
             <TextInput 
               style={styles.input} 
-              placeholder="Ex: Jean Dupont" 
+              placeholder="Ex: Ahmed Ben Ali" 
               placeholderTextColor={COLORS.gray[400]} 
               value={username} 
               onChangeText={setUsername} 
-              autoCapitalize="none"
+              autoCapitalize="words"
             />
           </View>
 
@@ -81,7 +117,7 @@ export default function RegisterScreen() {
             <Text style={styles.label}>ADRESSE E-MAIL *</Text>
             <TextInput 
               style={styles.input} 
-              placeholder="votre@email.com" 
+              placeholder="Ex: ahmed@email.com" 
               placeholderTextColor={COLORS.gray[400]} 
               value={email} 
               onChangeText={setEmail} 
@@ -94,7 +130,7 @@ export default function RegisterScreen() {
             <Text style={styles.label}>TÉLÉPHONE (OPTIONNEL)</Text>
             <TextInput 
               style={styles.input} 
-              placeholder="+33 6..." 
+              placeholder="Ex: 51234567 " 
               placeholderTextColor={COLORS.gray[400]} 
               value={phone} 
               onChangeText={setPhone} 
@@ -103,11 +139,12 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputWrapper}>
-            <Text style={styles.label}>MOT DE PASSE *</Text>
+            <Text style={styles.label}>MOT DE PASSE * (10 caractères minimum)</Text>
             <View style={styles.passwordRow}>
               <TextInput 
                 style={styles.inputPassword} 
-                placeholder="6 caractères minimum" 
+                placeholder="Ex: MonMotDePasse123" 
+                placeholderTextColor={COLORS.gray[400]}
                 secureTextEntry={!showPassword} 
                 value={password} 
                 onChangeText={setPassword} 
@@ -123,6 +160,7 @@ export default function RegisterScreen() {
             <TextInput 
               style={styles.input} 
               placeholder="Répétez votre mot de passe" 
+              placeholderTextColor={COLORS.gray[400]}
               secureTextEntry={!showPassword} 
               value={confirmPassword} 
               onChangeText={setConfirmPassword} 
@@ -188,17 +226,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden'
   },
   inputWrapper: {
-    padding: 12,
+    padding: 14,
     borderBottomWidth: 1.5,
     borderBottomColor: COLORS.gray[300],
   },
   noBorder: { borderBottomWidth: 0 },
-  label: { fontSize: 10, fontWeight: '800', color: COLORS.black, marginBottom: 4 },
-  input: { fontSize: 16, color: COLORS.gray[900], paddingVertical: 2 },
+  label: { fontSize: 10, fontWeight: '800', color: COLORS.black, marginBottom: 6, letterSpacing: 0.5 },
+  input: { 
+    fontSize: 16, 
+    color: COLORS.black, 
+    paddingVertical: 4,
+  },
   
   passwordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  inputPassword: { flex: 1, fontSize: 16, color: COLORS.gray[900], paddingVertical: 2 },
-  showText: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+  inputPassword: { 
+    flex: 1, 
+    fontSize: 16, 
+    color: COLORS.black, 
+    paddingVertical: 4,
+  },
+  showText: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: COLORS.blumine[600],
+    marginLeft: 10,
+  },
 
   signupButton: {
     backgroundColor: COLORS.blumine[600],

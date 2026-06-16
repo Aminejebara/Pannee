@@ -16,6 +16,10 @@ export const registerPro = async (req, res) => {
       categoryIds
     } = req.body
 
+    // Déclaration des variables
+    let userId
+    let professionalId
+
     // =============================================
     // 1. Vérifier email et username existants
     // =============================================
@@ -29,28 +33,18 @@ export const registerPro = async (req, res) => {
       [username]
     )
 
-    let userId
-
     // =============================================
     // Cas 1 : Email existe et est ACTIF
     // =============================================
     if (existingEmail.length > 0 && existingEmail[0].is_active === 1) {
-      return res.status(409).json({ message: "Email déjà utilisé" })
+      return res.status(409).json({ message: "Email déjà utilisé par un compte actif" })
     }
 
     // =============================================
     // Cas 2 : Username existe et est ACTIF
     // =============================================
     if (existingUsername.length > 0 && existingUsername[0].is_active === 1) {
-      // Vérifier si cet username appartient au même email que la requête
-      const [userWithThisUsername] = await pool.query(
-        "SELECT id, email FROM users WHERE id = ?",
-        [existingUsername[0].id]
-      )
-      
-      if (userWithThisUsername[0].email !== email) {
-        return res.status(409).json({ message: "Nom d'utilisateur déjà pris" })
-      }
+      return res.status(409).json({ message: "Nom d'utilisateur déjà utilisé par un compte actif" })
     }
 
     // =============================================
@@ -58,6 +52,11 @@ export const registerPro = async (req, res) => {
     // =============================================
     if (existingEmail.length > 0 && existingEmail[0].is_active === 0) {
       userId = existingEmail[0].id
+      
+      // Vérifier que le username n'est pas déjà utilisé par un AUTRE compte actif
+      if (existingUsername.length > 0 && existingUsername[0].is_active === 1 && existingUsername[0].id !== userId) {
+        return res.status(409).json({ message: "Nom d'utilisateur déjà pris par un compte actif" })
+      }
       
       const password_hash = await bcrypt.hash(password, 12)
       
@@ -68,10 +67,10 @@ export const registerPro = async (req, res) => {
       )
       
       if (existingPro.length > 0) {
-        // Mettre à jour le profil pro existant au lieu de le supprimer
+        // Mettre à jour le profil pro existant avec status 'pending'
         await pool.query(
           `UPDATE professionals 
-           SET business_name = ?, description = ?, address = ?, lat = ?, lng = ?, city = ?, country = ?
+           SET business_name = ?, description = ?, address = ?, lat = ?, lng = ?, city = ?, country = ?, status = 'active'
            WHERE user_id = ?`,
           [business_name, description || null, address || null, lat || null, lng || null, city || null, country || null, userId]
         )
@@ -86,10 +85,15 @@ export const registerPro = async (req, res) => {
       )
     } 
     // =============================================
-    // Cas 4 : Username existe mais est INACTIF (et email différent)
+    // Cas 4 : Username existe mais est INACTIF
     // =============================================
     else if (existingUsername.length > 0 && existingUsername[0].is_active === 0) {
       userId = existingUsername[0].id
+      
+      // Vérifier que l'email n'est pas déjà utilisé par un AUTRE compte actif
+      if (existingEmail.length > 0 && existingEmail[0].is_active === 1 && existingEmail[0].id !== userId) {
+        return res.status(409).json({ message: "Email déjà utilisé par un compte actif" })
+      }
       
       const password_hash = await bcrypt.hash(password, 12)
       
@@ -102,7 +106,7 @@ export const registerPro = async (req, res) => {
       if (existingPro.length > 0) {
         await pool.query(
           `UPDATE professionals 
-           SET business_name = ?, description = ?, address = ?, lat = ?, lng = ?, city = ?, country = ?
+           SET business_name = ?, description = ?, address = ?, lat = ?, lng = ?, city = ?, country = ?, status = 'pending'
            WHERE user_id = ?`,
           [business_name, description || null, address || null, lat || null, lng || null, city || null, country || null, userId]
         )
@@ -136,12 +140,12 @@ export const registerPro = async (req, res) => {
     // 2. Créer/mettre à jour le profil professional
     // =============================================
     
-    // Si professionalId n'a pas déjà été défini (cas inactif sans ancien pro)
+    // Si professionalId n'a pas déjà été défini
     if (!professionalId) {
       const [proResult] = await pool.query(
         `INSERT INTO professionals
-         (user_id, business_name, description, address, lat, lng, city, country)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, business_name, description, address, lat, lng, city, country, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         [
           userId,
           business_name,
@@ -161,7 +165,7 @@ export const registerPro = async (req, res) => {
     // =============================================
     
     if (categoryIds && Array.isArray(categoryIds) && categoryIds.length > 0) {
-      // Supprimer les anciennes catégories si on est en mode "réactivation"
+      // Supprimer les anciennes catégories
       await pool.query(
         "DELETE FROM professional_categories WHERE professional_id = ?",
         [professionalId]
