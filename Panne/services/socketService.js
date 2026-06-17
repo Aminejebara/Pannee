@@ -11,7 +11,7 @@ export const connectSocket = () => {
   }
 
     //const API_URL = "https://pannebackend.duckdns.org"
-    const API_URL = "http://192.168.1.48:5000" // Remplacez par l'URL de votre serveur Socket.IO
+    const API_URL = "https://panneapi.duckdns.org/api" // Remplacez par l'URL de votre serveur Socket.IO
 
   if (socket && socket.connected) {
     console.log('🔌 Socket déjà connecté')

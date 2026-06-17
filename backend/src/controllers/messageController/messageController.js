@@ -462,7 +462,7 @@ export const uploadMessageImage = [
             }
 
             // ✅ EN LOCAL (développement) - Utilisez votre IP locale
-            const baseUrl = 'http://192.168.1.48:5000'  // ou le port que vous utilisez
+            const baseUrl = 'https://panneapi.duckdns.org/api'  // ou le port que vous utilisez
             // OU si vous testez sur le même ordinateur :
             // const baseUrl = 'http://localhost:5000'
             

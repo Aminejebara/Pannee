@@ -9,7 +9,7 @@ const LOCATION_STORAGE_KEY = '@location_updates';
 // Service pour les appels API en background
 const updateLocationApi = async (professionalId, lat, lng, address, city, country) => {
   try {
-    const baseUrl = 'http://192.168.1.48:5000';
+    const baseUrl = 'https://panneapi.duckdns.org/api';
     const response = await fetch(`${baseUrl}/api/professionals/${professionalId}/location`, {
       method: 'PUT',
       headers: {
