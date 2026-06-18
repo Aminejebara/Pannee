@@ -38,6 +38,7 @@ export const getHomeData = async (req, res) => {
                 p.city,
                 u.username, 
                 u.avatar_url,
+                u.phone,
                 COALESCE(p.rating_avg, 0) as rating
             FROM professionals p
             JOIN users u ON p.user_id = u.id
@@ -57,6 +58,7 @@ export const getHomeData = async (req, res) => {
                 p.city,
                 u.username, 
                 u.avatar_url,
+                u.phone,
                 p.created_at
             FROM professionals p
             JOIN users u ON p.user_id = u.id
@@ -75,7 +77,8 @@ export const getHomeData = async (req, res) => {
                 p.rating_count,
                 p.city,
                 u.username, 
-                u.avatar_url
+                u.avatar_url,
+                u.phone
             FROM professionals p
             JOIN users u ON p.user_id = u.id
             WHERE p.status = 'active' AND p.is_featured = 1

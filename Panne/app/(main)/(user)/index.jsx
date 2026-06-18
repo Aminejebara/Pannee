@@ -40,12 +40,12 @@ export default function UserHome() {
     setRefreshing(false)
   }
 
-  const handleContactPro = async (professionalId, professionalName ,professionalAvatar) => {
+  const handleContactPro = async (professionalId, professionalName ,professionalAvatar ,professionalPhone) => {
     const result = await createConversation(professionalId)
     if (result.success) {
       router.push({
         pathname: '/(main)/conversation/[id]',
-        params: { id: result.conversationId, contactName: professionalName, professionalId: professionalId ,  contactAvatar: professionalAvatar}
+        params: { id: result.conversationId, contactName: professionalName, professionalId: professionalId ,  contactAvatar: professionalAvatar, contactPhone: professionalPhone }
       })
     } else {
       Alert.alert('Erreur', 'Impossible de contacter le professionnel')

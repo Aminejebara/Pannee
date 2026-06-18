@@ -462,7 +462,7 @@ export const uploadMessageImage = [
             }
 
             // ✅ EN LOCAL (développement) - Utilisez votre IP locale
-            const baseUrl = 'https://panneapi.duckdns.org/api'  // ou le port que vous utilisez
+            const baseUrl = 'https://pannebackend.duckdns.org'  // ou le port que vous utilisez
             // OU si vous testez sur le même ordinateur :
             // const baseUrl = 'http://localhost:5000'
             

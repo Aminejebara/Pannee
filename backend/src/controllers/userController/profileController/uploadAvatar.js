@@ -15,7 +15,7 @@ export const uploadUserAvatar = async (req, res) => {
         connection = await pool.getConnection();
 
         //const baseUrl = 'https://pannebackend.duckdns.org';
-        const baseUrl = 'https://panneapi.duckdns.org/api'
+        const baseUrl = 'https://pannebackend.duckdns.org/api'
         const avatarUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
 
 
