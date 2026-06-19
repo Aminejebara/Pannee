@@ -139,22 +139,23 @@ export default function ProfessionalDetail() {
     setRefreshing(false)
   }
 
-  const handleContact = async () => {
-    const result = await createConversation(id)
-    if (result.success) {
-      router.push({
-        pathname: '/conversation/[id]',
-        params: { 
-          id: result.conversationId, 
-          contactName: professional?.business_name,
-          contactAvatar: professional?.avatar_url,
-          professionalId: id 
-        }
-      })
-    } else {
-      Alert.alert('Erreur', 'Impossible de contacter le professionnel')
+    const handleContact = async () => {
+      const result = await createConversation(id)
+      if (result.success) {
+        router.push({
+          pathname: '/conversation/[id]',
+          params: { 
+            id: result.conversationId, 
+            contactName: professional?.business_name,
+            contactAvatar: professional?.avatar_url,
+            professionalId: id ,
+            contactPhone: professional?.phone || null 
+          }
+        })
+      } else {
+        Alert.alert('Erreur', 'Impossible de contacter le professionnel')
+      }
     }
-  }
 
   const handleCall = () => {
     professional?.phone ? Linking.openURL(`tel:${professional.phone}`) : Alert.alert('Info', 'Numéro indisponible')

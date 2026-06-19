@@ -34,7 +34,7 @@ export default function ProfessionalsSection({ title, professionals, onContact }
         {/* Bouton Message Flottant (Action Rapide) en haut à droite */}
         <TouchableOpacity 
           style={styles.floatingContactButton} 
-          onPress={() => onContact(item.id, item.business_name, item.avatar_url)}
+          onPress={() => onContact(item.id, item.business_name, item.avatar_url,item.phone || null)}
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubble-outline" size={16} color={COLORS.blumine[950]} />
