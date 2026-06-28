@@ -15,7 +15,7 @@ export const uploadMessageImage = [
             // ✅ EN LOCAL (développement) - Utilisez votre IP locale
             // const baseUrl = 'https://pannebackend.duckdns.org'  // ou le port que vous utilisez
             // OU si vous testez sur le même ordinateur :
-             const baseUrl = 'http://192.168.1.109:5000'
+             const baseUrl = 'https://pannebackend.duckdns.org'
             
             // ❌ SUR LE SERVEUR (production) - À commenter en local
             // const baseUrl = 'https://pannebackend.duckdns.org'
