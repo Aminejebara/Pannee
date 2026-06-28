@@ -1,7 +1,7 @@
 // FICHIER: app/(main)/(user)/conversation.jsx
-// DESCRIPTION: Liste des conversations pour l'utilisateur (redirige vers le détail)
+// DESCRIPTION: Liste des conversations pour l'utilisateur
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useUser } from '../../../hooks/useUser'
 import { useAuth } from '../../../hooks/useAuth'
-import { socketEvents, getSocket, connectSocket } from '../../../services/socketService'
+import { getSocket, connectSocket } from '../../../services/socketService'
 import { COLORS } from '../../../constants/colors'
 
 export default function UserConversations() {
@@ -30,14 +30,30 @@ export default function UserConversations() {
   const [refreshing, setRefreshing] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showOptionsModal, setShowOptionsModal] = useState(false)
+  
+  // Référence pour savoir si les écouteurs sont attachés
+  const listenersAttached = useRef(false)
 
   const loadConversations = async () => {
-    const result = await getConversations()
-    if (result.success) {
-      const filtered = result.conversations.filter(item => {
-        return item.last_message !== null && item.last_message !== 'Nouvelle conversation'
-      })
-      setConversations(filtered)
+    try {
+      const result = await getConversations()
+      if (result.success) {
+        const filtered = result.conversations.filter(item => {
+          return item.last_message !== null && item.last_message !== 'Nouvelle conversation'
+        })
+        setConversations(filtered)
+        
+        // ✅ Après chargement, rejoindre toutes les conversations
+        const socket = getSocket()
+        if (socket && socket.connected) {
+          filtered.forEach(conv => {
+            socket.emit('join_conversation', { conversationId: conv.id })
+          })
+          console.log(`🔵 User - Rejoint ${filtered.length} conversations`)
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement conversations user:', error)
     }
   }
 
@@ -45,45 +61,102 @@ export default function UserConversations() {
     useCallback(() => {
       // ✅ Connecter le socket si besoin
       const socket = getSocket()
-      if (!socket || !socket.connected) connectSocket()
+      if (!socket || !socket.connected) {
+        connectSocket()
+      }
       loadConversations()
     }, [])
   )
 
   // ✅ Ecouter les evenements socket pour mettre a jour la liste en temps reel
   useEffect(() => {
+    // 1. Vérifier le socket
     const socket = getSocket()
-    if (!socket) return
+    
+    if (!socket) {
+      console.log('❌ Socket non disponible pour user conversations')
+      const timer = setTimeout(() => {
+        connectSocket()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
 
-    // ✅ Quand un nouveau message est recu
+    // 2. Éviter les doublons
+    if (listenersAttached.current) {
+      console.log('⚠️ Écouteurs user déjà attachés')
+      return
+    }
+
+    console.log('✅ Attachement des écouteurs socket pour USER...')
+
+    // ✅ Quand un nouveau message est reçu
     const handleReceiveMessage = (data) => {
-      setTimeout(() => loadConversations(), 300)
+      console.log('📩 USER - NOUVEAU MESSAGE REÇU:', data)
+      
+      setConversations(prev => {
+        const updated = prev.map(conv => {
+          if (String(conv.id) === String(data.conversationId)) {
+            return {
+              ...conv,
+              last_message: data.message?.content || 'Message',
+              last_message_time: data.message?.created_at || new Date().toISOString(),
+              unread_count: (conv.unread_count || 0) + 1
+            }
+          }
+          return conv
+        })
+        return updated
+      })
     }
 
-    // ✅ Quand un message est envoye
+    // ✅ Quand un message est envoyé
     const handleMessageSent = (data) => {
+      console.log('✅ USER - MESSAGE ENVOYÉ CONFIRMÉ:', data)
+      
+      setConversations(prev => {
+        const updated = prev.map(conv => {
+          if (String(conv.id) === String(data.conversationId)) {
+            return {
+              ...conv,
+              last_message: data.message?.content || 'Message',
+              last_message_time: data.message?.created_at || new Date().toISOString(),
+            }
+          }
+          return conv
+        })
+        return updated
+      })
+    }
+
+    // ✅ UNSEND - message unique
+    const handleMessageUnsent = (data) => {
+      console.log('🔴 USER - message_unsent reçu:', data)
       setTimeout(() => loadConversations(), 300)
     }
 
-    // ✅ UNSEND
+    // ✅ UNSEND - tous les messages
     const handleMessagesUnsentAll = (data) => {
-      loadConversations()
+      console.log('🔴 USER - messages_unsent_all reçu:', data)
+      setConversations(prev =>
+        prev.filter(conv => String(conv.id) !== String(data.conversationId))
+      )
     }
 
-    const handleMessageUnsent = (data) => {
-      setTimeout(() => loadConversations(), 500)
-    }
-
+    // ✅ Attacher les écouteurs
     socket.on('receive_message', handleReceiveMessage)
     socket.on('message_sent', handleMessageSent)
     socket.on('messages_unsent_all', handleMessagesUnsentAll)
     socket.on('message_unsent', handleMessageUnsent)
 
+    listenersAttached.current = true
+
     return () => {
+      console.log('🧹 Nettoyage des écouteurs USER')
       socket.off('receive_message', handleReceiveMessage)
       socket.off('message_sent', handleMessageSent)
       socket.off('messages_unsent_all', handleMessagesUnsentAll)
       socket.off('message_unsent', handleMessageUnsent)
+      listenersAttached.current = false
     }
   }, [])
 
@@ -114,15 +187,15 @@ export default function UserConversations() {
     if (!message) return 'Nouvelle conversation'
 
     if (message.includes('/uploads/messages/') || message.includes('uploads/messages')) {
-      return 'Photo'
+      return '📷 Photo'
     }
 
     if (message.includes('google.com/maps') || message.includes('maps?q=') || message.includes('maps.google.com')) {
-      return 'Position'
+      return '📍 Position'
     }
 
     if (message.includes('http://') || message.includes('https://')) {
-      return 'Lien'
+      return '🔗 Lien'
     }
 
     return message
@@ -188,19 +261,23 @@ export default function UserConversations() {
 
   const formatTime = (dateString) => {
     if (!dateString) return ''
-    const date = new Date(dateString)
-    const now = new Date()
-    const diff = now - date
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    
-    if (days === 0) {
-      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    } else if (days === 1) {
-      return 'Hier'
-    } else if (days < 7) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'short' })
-    } else {
-      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+    try {
+      const date = new Date(dateString)
+      const now = new Date()
+      const diff = now - date
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      
+      if (days === 0) {
+        return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      } else if (days === 1) {
+        return 'Hier'
+      } else if (days < 7) {
+        return date.toLocaleDateString('fr-FR', { weekday: 'short' })
+      } else {
+        return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+      }
+    } catch {
+      return ''
     }
   }
 
@@ -419,18 +496,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7F7F7'
   },
   avatarPlaceholder: { 
-    width: 60, 
-    height: 60, 
-    borderRadius: 30, 
-    backgroundColor: COLORS.blumine[500],
+    width: 52, 
+    height: 52, 
+    borderRadius: 26, 
+    backgroundColor: '#F7F7F7',
     alignItems: 'center', 
     justifyContent: 'center' 
   },
   avatarText: { 
-    fontSize: 24, 
-    fontWeight: '700', 
-    color: COLORS.white,
-    textTransform: 'uppercase'
+    fontSize: 20, 
+    fontWeight: '600', 
+    color: COLORS.blumine[600]
   },
   unreadDot: { 
     position: 'absolute', 

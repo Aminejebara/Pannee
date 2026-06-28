@@ -1,7 +1,7 @@
 // FICHIER: app/(main)/(pro)/conversations.jsx
 // DESCRIPTION: Liste des conversations pour le professionnel
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { usePro } from '../../../hooks/usePro'
 import { useAuth } from '../../../hooks/useAuth'
-import { socketEvents, getSocket, connectSocket } from '../../../services/socketService'
+import { getSocket, connectSocket, socketEvents } from '../../../services/socketService'
 import { COLORS } from '../../../constants/colors'
 
 export default function ProConversations() {
@@ -30,63 +30,175 @@ export default function ProConversations() {
   const [refreshing, setRefreshing] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [showOptionsModal, setShowOptionsModal] = useState(false)
+  const [socketReady, setSocketReady] = useState(false)
+  
+  // Ref pour éviter les doublons d'écouteurs
+  const listenersAttached = useRef(false)
 
   const loadConversations = async () => {
-    const result = await getConversations()
-    if (result.success) {
-      const filtered = result.conversations.filter(item => {
-        return item.last_message !== null && item.last_message !== 'Nouvelle conversation'
-      })
-      setConversations(filtered)
+    try {
+      const result = await getConversations()
+      if (result.success) {
+        const filtered = result.conversations.filter(item => {
+          return item.last_message !== null && item.last_message !== 'Nouvelle conversation'
+        })
+        setConversations(filtered)
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement conversations:', error)
     }
   }
 
+  // ✅ FIX 1 — useFocusEffect : charger les données à chaque focus
   useFocusEffect(
     useCallback(() => {
-      // Connecter le socket si besoin
-      const socket = getSocket()
-      if (!socket || !socket.connected) connectSocket()
       loadConversations()
     }, [])
   )
 
-  // ✅ Ecouter les evenements socket pour mettre a jour la liste en temps reel
+  // ✅ FIX 2 — Connexion socket au montage
   useEffect(() => {
-    const socket = getSocket()
-    if (!socket) return
-
-    // ✅ Quand un nouveau message est recu
-    const handleReceiveMessage = (data) => {
-      // Recharger la liste pour mettre a jour le dernier message et le compteur
-      setTimeout(() => loadConversations(), 300)
+    const initSocket = async () => {
+      const socket = getSocket()
+      if (!socket || !socket.connected) {
+        const newSocket = connectSocket()
+        if (newSocket) {
+          setSocketReady(true)
+        }
+      } else {
+        setSocketReady(true)
+      }
     }
+    
+    initSocket()
 
-    // ✅ Quand un message est envoye
-    const handleMessageSent = (data) => {
-      setTimeout(() => loadConversations(), 300)
-    }
-
-    // ✅ UNSEND
-    const handleMessagesUnsentAll = (data) => {
-      loadConversations()
-    }
-
-    const handleMessageUnsent = (data) => {
-      setTimeout(() => loadConversations(), 500)
-    }
-
-    socket.on('receive_message', handleReceiveMessage)
-    socket.on('message_sent', handleMessageSent)
-    socket.on('messages_unsent_all', handleMessagesUnsentAll)
-    socket.on('message_unsent', handleMessageUnsent)
-
+    // Nettoyage à la fin
     return () => {
-      socket.off('receive_message', handleReceiveMessage)
-      socket.off('message_sent', handleMessageSent)
-      socket.off('messages_unsent_all', handleMessagesUnsentAll)
-      socket.off('message_unsent', handleMessageUnsent)
+      // Ne pas déconnecter le socket ici, il est partagé
     }
   }, [])
+
+  // ✅ FIX 3 — Attacher les écouteurs socket une seule fois
+  useEffect(() => {
+    if (!socketReady) return
+
+    const attachListeners = () => {
+      const socket = getSocket()
+      if (!socket) {
+        console.log('❌ Socket non disponible pour attacher les écouteurs')
+        return false
+      }
+
+      // Éviter les doublons d'écouteurs
+      if (listenersAttached.current) {
+        console.log('⚠️ Écouteurs déjà attachés')
+        return true
+      }
+
+      console.log('✅ Attachement des écouteurs socket...')
+
+      // ✅ Nouveau message reçu
+      const handleReceiveMessage = (data) => {
+        console.log('📩 receive_message reçu dans conversations:', data)
+        
+        setConversations(prev => {
+          const existingIndex = prev.findIndex(conv => String(conv.id) === String(data.conversationId))
+          
+          if (existingIndex !== -1) {
+            // Mettre à jour la conversation existante
+            const updated = [...prev]
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              last_message: data.message?.content || 'Message',
+              last_message_time: data.message?.created_at || new Date().toISOString(),
+              unread_count: (updated[existingIndex].unread_count || 0) + 1
+            }
+            return updated
+          } else {
+            // Conversation non trouvée, recharger
+            loadConversations()
+            return prev
+          }
+        })
+      }
+
+      // ✅ Message envoyé
+      const handleMessageSent = (data) => {
+        console.log('✅ message_sent reçu dans conversations:', data)
+        
+        setConversations(prev => prev.map(conv => {
+          if (String(conv.id) !== String(data.conversationId)) return conv
+          return {
+            ...conv,
+            last_message: data.message?.content || 'Message',
+            last_message_time: data.message?.created_at || new Date().toISOString(),
+          }
+        }))
+      }
+
+      // ✅ Message unsent
+      const handleMessageUnsent = (data) => {
+        console.log('🔴 message_unsent reçu dans conversations:', data)
+        setTimeout(() => loadConversations(), 300)
+      }
+
+      // ✅ Tous les messages unsent
+      const handleMessagesUnsentAll = (data) => {
+        console.log('🔴 messages_unsent_all reçu dans conversations:', data)
+        setConversations(prev =>
+          prev.filter(conv => String(conv.id) !== String(data.conversationId))
+        )
+      }
+
+      // ✅ Attacher les écouteurs
+      socket.on('receive_message', handleReceiveMessage)
+      socket.on('message_sent', handleMessageSent)
+      socket.on('message_unsent', handleMessageUnsent)
+      socket.on('messages_unsent_all', handleMessagesUnsentAll)
+
+      // ✅ Stocker les fonctions de nettoyage
+      listenersAttached.current = true
+
+      return () => {
+        console.log('🧹 Nettoyage des écouteurs socket conversations')
+        socket.off('receive_message', handleReceiveMessage)
+        socket.off('message_sent', handleMessageSent)
+        socket.off('message_unsent', handleMessageUnsent)
+        socket.off('messages_unsent_all', handleMessagesUnsentAll)
+        listenersAttached.current = false
+      }
+    }
+
+    // Attacher les écouteurs
+    let cleanup = attachListeners()
+
+    // Si pas de socket, réessayer
+    if (!cleanup) {
+      const timer = setTimeout(() => {
+        cleanup = attachListeners()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+
+    return () => {
+      if (typeof cleanup === 'function') cleanup()
+    }
+  }, [socketReady])
+
+  // ✅ FIX 4 — Rejoindre les conversations quand la liste change
+  useEffect(() => {
+    if (!socketReady || conversations.length === 0) return
+
+    const socket = getSocket()
+    if (!socket || !socket.connected) return
+
+    // Rejoindre chaque conversation
+    conversations.forEach(conv => {
+      socketEvents.joinConversation(conv.id)
+    })
+
+    console.log(`🔵 Rejoint ${conversations.length} conversations`)
+  }, [conversations, socketReady])
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -107,43 +219,19 @@ export default function ProConversations() {
     })
   }
 
-  // ============================================================
-  // FORMATAGE DU DERNIER MESSAGE AVEC ICONES
-  // ============================================================
-
   const formatLastMessage = (message) => {
     if (!message) return 'Nouvelle conversation'
-
-    if (message.includes('/uploads/messages/') || message.includes('uploads/messages')) {
-      return 'Photo'
-    }
-
-    if (message.includes('google.com/maps') || message.includes('maps?q=') || message.includes('maps.google.com')) {
-      return 'Position'
-    }
-
-    if (message.includes('http://') || message.includes('https://')) {
-      return 'Lien'
-    }
-
+    if (message.includes('/uploads/messages/') || message.includes('uploads/messages')) return '📷 Photo'
+    if (message.includes('google.com/maps') || message.includes('maps?q=') || message.includes('maps.google.com')) return '📍 Position'
+    if (message.includes('http://') || message.includes('https://')) return '🔗 Lien'
     return message
   }
 
   const getMessageIcon = (message) => {
     if (!message) return 'chatbubble-outline'
-
-    if (message.includes('/uploads/messages/') || message.includes('uploads/messages')) {
-      return 'image-outline'
-    }
-
-    if (message.includes('google.com/maps') || message.includes('maps?q=') || message.includes('maps.google.com')) {
-      return 'location-outline'
-    }
-
-    if (message.includes('http://') || message.includes('https://')) {
-      return 'link-outline'
-    }
-
+    if (message.includes('/uploads/messages/') || message.includes('uploads/messages')) return 'image-outline'
+    if (message.includes('google.com/maps') || message.includes('maps?q=') || message.includes('maps.google.com')) return 'location-outline'
+    if (message.includes('http://') || message.includes('https://')) return 'link-outline'
     return 'chatbubble-outline'
   }
 
@@ -154,14 +242,13 @@ export default function ProConversations() {
 
   const handleUnsendAll = async () => {
     if (!selectedConversation) return
-
     Alert.alert(
       'Supprimer tous les messages',
-      `Voulez-vous vraiment supprimer tous vos messages de la conversation avec "${selectedConversation.contact_name}" ?\n\nCette action est irreversible et les messages seront supprimes pour tout le monde.`,
+      `Voulez-vous vraiment supprimer tous vos messages de la conversation avec "${selectedConversation.contact_name}" ?\n\nCette action est irréversible et les messages seront supprimés pour tout le monde.`,
       [
         { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Supprimer tout', 
+        {
+          text: 'Supprimer tout',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -170,10 +257,7 @@ export default function ProConversations() {
                 setShowOptionsModal(false)
                 setSelectedConversation(null)
                 setConversations(prev => prev.filter(item => item.id !== selectedConversation.id))
-                Alert.alert(
-                  'Succes',
-                  `${result.affectedCount} message(s) supprime(s) avec succes`
-                )
+                Alert.alert('Succès', `${result.affectedCount} message(s) supprimé(s) avec succès`)
                 await loadConversations()
               } else {
                 Alert.alert('Erreur', result.error || 'Impossible de supprimer les messages')
@@ -189,19 +273,17 @@ export default function ProConversations() {
 
   const formatTime = (dateString) => {
     if (!dateString) return ''
-    const date = new Date(dateString)
-    const now = new Date()
-    const diff = now - date
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    
-    if (days === 0) {
-      return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    } else if (days === 1) {
-      return 'Hier'
-    } else if (days < 7) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'short' })
-    } else {
+    try {
+      const date = new Date(dateString)
+      const now = new Date()
+      const diff = now - date
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      if (days === 0) return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      if (days === 1) return 'Hier'
+      if (days < 7) return date.toLocaleDateString('fr-FR', { weekday: 'short' })
       return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+    } catch {
+      return ''
     }
   }
 
@@ -213,8 +295,8 @@ export default function ProConversations() {
     const messageIcon = getMessageIcon(item.last_message)
 
     return (
-      <TouchableOpacity 
-        style={styles.conversationItem} 
+      <TouchableOpacity
+        style={styles.conversationItem}
         onPress={() => navigateToConversation(item)}
         onLongPress={() => handleLongPress(item)}
         activeOpacity={0.7}
@@ -241,12 +323,12 @@ export default function ProConversations() {
               {formatTime(item.last_message_time || item.created_at)}
             </Text>
           </View>
-          
+
           <View style={styles.messageRow}>
-            <Ionicons 
-              name={messageIcon} 
-              size={14} 
-              color={hasUnread ? COLORS.black : COLORS.gray[500]} 
+            <Ionicons
+              name={messageIcon}
+              size={14}
+              color={hasUnread ? COLORS.black : COLORS.gray[500]}
               style={styles.messageIcon}
             />
             <Text style={[styles.lastMessage, hasUnread && styles.unreadMessageBold]} numberOfLines={2}>
@@ -255,7 +337,7 @@ export default function ProConversations() {
           </View>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.optionsButton}
           onPress={() => handleLongPress(item)}
         >
@@ -286,9 +368,9 @@ export default function ProConversations() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
             tintColor={COLORS.blumine[600]}
           />
         }
@@ -305,15 +387,15 @@ export default function ProConversations() {
         }
       />
 
-      {/* MODAL OPTIONS UNSEND */}
+      {/* ─── Modal options ───────────────────────────────── */}
       <Modal
         transparent={true}
         visible={showOptionsModal}
         animationType="fade"
         onRequestClose={() => setShowOptionsModal(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay} 
+        <Pressable
+          style={styles.modalOverlay}
           onPress={() => setShowOptionsModal(false)}
         >
           <View style={styles.modalContent}>
@@ -328,10 +410,7 @@ export default function ProConversations() {
 
             <View style={styles.modalDivider} />
 
-            <TouchableOpacity 
-              style={styles.modalOption}
-              onPress={handleUnsendAll}
-            >
+            <TouchableOpacity style={styles.modalOption} onPress={handleUnsendAll}>
               <View style={[styles.modalOptionIcon, { backgroundColor: '#FEE2E2' }]}>
                 <Ionicons name="trash-outline" size={22} color="#DC2626" />
               </View>
@@ -345,25 +424,19 @@ export default function ProConversations() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.modalOption, styles.modalOptionLast]}
               onPress={() => {
                 setShowOptionsModal(false)
-                if (selectedConversation) {
-                  navigateToConversation(selectedConversation)
-                }
+                if (selectedConversation) navigateToConversation(selectedConversation)
               }}
             >
               <View style={[styles.modalOptionIcon, { backgroundColor: '#E5E7EB' }]}>
                 <Ionicons name="chatbubble-outline" size={22} color={COLORS.black} />
               </View>
               <View style={styles.modalOptionTextContainer}>
-                <Text style={styles.modalOptionText}>
-                  Ouvrir la conversation
-                </Text>
-                <Text style={styles.modalOptionSubtext}>
-                  Acceder aux messages
-                </Text>
+                <Text style={styles.modalOptionText}>Ouvrir la conversation</Text>
+                <Text style={styles.modalOptionSubtext}>Accéder aux messages</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -374,97 +447,97 @@ export default function ProConversations() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#FFFFFF' 
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF'
   },
-  loaderContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF'
   },
-  header: { 
-    paddingHorizontal: 24, 
+  header: {
+    paddingHorizontal: 24,
     paddingTop: 24,
-    paddingBottom: 16, 
+    paddingBottom: 16,
     backgroundColor: '#FFFFFF',
   },
-  headerTitle: { 
-    fontSize: 32, 
-    fontWeight: '700', 
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
     color: COLORS.black,
     letterSpacing: -0.5
   },
-  listContent: { 
-    flexGrow: 1, 
+  listContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 24
   },
-  conversationItem: { 
-    flexDirection: 'row', 
-    paddingVertical: 16, 
+  conversationItem: {
+    flexDirection: 'row',
+    paddingVertical: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#EBEBEB',
     alignItems: 'center'
   },
-  avatarContainer: { 
-    marginRight: 16, 
-    position: 'relative' 
+  avatarContainer: {
+    marginRight: 16,
+    position: 'relative'
   },
-  avatar: { 
-    width: 52, 
-    height: 52, 
+  avatar: {
+    width: 52,
+    height: 52,
     borderRadius: 26,
     backgroundColor: '#F7F7F7'
   },
-  avatarPlaceholder: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: 26, 
-    backgroundColor: '#F7F7F7', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  avatarPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#F7F7F7',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  avatarText: { 
-    fontSize: 20, 
-    fontWeight: '600', 
-    color: COLORS.blumine[600] 
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: COLORS.blumine[600]
   },
-  unreadDot: { 
-    position: 'absolute', 
-    top: 0, 
-    right: 0, 
+  unreadDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
     backgroundColor: COLORS.blumine[600],
-    width: 14, 
-    height: 14, 
+    width: 14,
+    height: 14,
     borderRadius: 7,
     borderWidth: 2,
     borderColor: '#FFFFFF'
   },
-  contentContainer: { 
-    flex: 1, 
-    justifyContent: 'center' 
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'center'
   },
-  headerRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'baseline', 
-    marginBottom: 4 
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 4
   },
-  contactName: { 
-    fontSize: 16, 
-    fontWeight: '400', 
-    color: COLORS.black, 
-    flex: 1 
+  contactName: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: COLORS.black,
+    flex: 1
   },
   unreadTextBold: {
     fontWeight: '600'
   },
-  timeText: { 
-    fontSize: 12, 
-    color: COLORS.gray[500], 
+  timeText: {
+    fontSize: 12,
+    color: COLORS.gray[500],
     marginLeft: 8,
     fontWeight: '400'
   },
@@ -480,9 +553,9 @@ const styles = StyleSheet.create({
   messageIcon: {
     marginRight: 6
   },
-  lastMessage: { 
-    fontSize: 14, 
-    color: COLORS.gray[500], 
+  lastMessage: {
+    fontSize: 14,
+    color: COLORS.gray[500],
     lineHeight: 18,
     fontWeight: '400',
     flex: 1
@@ -495,10 +568,10 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 8
   },
-  emptyContainer: { 
+  emptyContainer: {
     flex: 1,
-    alignItems: 'flex-start', 
-    justifyContent: 'center', 
+    alignItems: 'flex-start',
+    justifyContent: 'center',
     paddingTop: 60,
     paddingHorizontal: 8
   },
@@ -511,15 +584,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 24
   },
-  emptyTitle: { 
-    fontSize: 22, 
-    fontWeight: '600', 
-    color: COLORS.black, 
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: COLORS.black,
     marginBottom: 8
   },
-  emptyText: { 
-    fontSize: 14, 
-    color: COLORS.gray[500], 
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.gray[500],
     lineHeight: 20,
     textAlign: 'left'
   },

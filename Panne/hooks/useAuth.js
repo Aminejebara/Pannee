@@ -4,26 +4,13 @@ import { useState, useEffect } from 'react'
 import useAuthStore from '../store/useAuthStore'
 import { authService } from '../services/auth/authService'
 import { connectSocket, disconnectSocket } from '../services/socketService'
-import { registerPushToken, deactivatePushToken, setupNotificationListeners } from '../services/notificationService'
+
 
 export const useAuth = () => {
   const [loading, setLoading] = useState(false)
   const { user, professional, accessToken, refreshToken, isAuthenticated, error, setAuth, logout: storeLogout, setError } = useAuthStore()
 
   // ✅ Enregistrer le token push quand l'utilisateur est authentifié
-  useEffect(() => {
-    const setupPushNotifications = async () => {
-      // ✅ Vérifier que user existe bien
-      if (isAuthenticated && accessToken && user && user.id) {
-        console.log('🔑 Enregistrement du token push pour:', user.role)
-        const token = await registerPushToken()
-        console.log('🔑 Token enregistré:', token)
-      } else {
-        console.log('⚠️ Pas de user, pas d\'enregistrement token')
-      }
-    }
-    setupPushNotifications()
-  }, [isAuthenticated, accessToken, user])
 
   // Connecter/déconnecter le socket
   useEffect(() => {
@@ -158,7 +145,7 @@ export const useAuth = () => {
       if (currentRefreshToken) await authService.logout(currentRefreshToken)
       
       // ✅ Désactiver le token push
-      await deactivatePushToken()
+   
       
     } catch (error) { 
       console.error('Logout error:', error)

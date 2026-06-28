@@ -1,26 +1,53 @@
 {
   "project_info": {
-    "project_number": "807505613501",
-    "project_id": "panne-5f213",
-    "storage_bucket": "panne-5f213.firebasestorage.app"
+    "project_number": "1027338125426",
+    "firebase_url": "https://panneauto-b3561-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "panneauto-b3561",
+    "storage_bucket": "panneauto-b3561.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:807505613501:android:57f1ebe23112b23b55ddd4",
+        "mobilesdk_app_id": "1:1027338125426:android:7617ad6b22be9ded7f02eb",
         "android_client_info": {
-          "package_name": "com.aminebenjebara.panne"
+          "package_name": "com.alayadigital.panne_auto"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1027338125426-4vm05oq9ajvl320v0vd9bj3c9jhs4hp7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alayadigital.panne_auto",
+            "certificate_hash": "05d3c6d83b04dc3db14a4cad3721b6e6464bb6f8"
+          }
+        },
+        {
+          "client_id": "1027338125426-ornp69s1b9geeqtnv34f0vn1u6n5b0vf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alayadigital.panne_auto",
+            "certificate_hash": "567380ebc9ec60a4b066639e3731d5ba964d7352"
+          }
+        },
+        {
+          "client_id": "1027338125426-2dsm013p8j40euoa7noclomceu1g4o57.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyCXYMorGUN-_QrH3HXsKcIFiFB0t3h7LcY"
+          "current_key": "AIzaSyCAdC7GGolBBNJdx0AjWTq2VljLj_RNr-c"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1027338125426-2dsm013p8j40euoa7noclomceu1g4o57.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

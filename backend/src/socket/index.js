@@ -4,208 +4,283 @@ import { pool } from "../config/db.js"
 
 let io = null
 
+// ============================================================
+// RATE LIMITER SIMPLE (évite le flood)
+// ============================================================
+const rateLimitMap = new Map()
+
+const isRateLimited = (userId, event, maxPerSecond = 5) => {
+  const key = `${userId}:${event}`
+  const now = Date.now()
+  const timestamps = rateLimitMap.get(key) || []
+  const recent = timestamps.filter(t => now - t < 1000)
+  if (recent.length >= maxPerSecond) return true
+  recent.push(now)
+  rateLimitMap.set(key, recent)
+  return false
+}
+
+// Nettoyer la map toutes les 60 secondes pour éviter les fuites mémoire
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, timestamps] of rateLimitMap.entries()) {
+    const recent = timestamps.filter(t => now - t < 2000)
+    if (recent.length === 0) rateLimitMap.delete(key)
+    else rateLimitMap.set(key, recent)
+  }
+}, 60_000)
+
+// ============================================================
+// CACHE SIMPLE pour professional_id (évite queries répétées)
+// ============================================================
+const proIdCache = new Map()
+
+const getProfessionalId = async (userId) => {
+  if (proIdCache.has(userId)) return proIdCache.get(userId)
+  const [rows] = await pool.query(
+    `SELECT id FROM professionals WHERE user_id = ? LIMIT 1`,
+    [userId]
+  )
+  const proId = rows[0]?.id || null
+  if (proId) proIdCache.set(userId, proId)
+  return proId
+}
+
+// Vider le cache toutes les 10 minutes
+setInterval(() => proIdCache.clear(), 10 * 60_000)
+
+// ============================================================
+// INIT SOCKET
+// ============================================================
 export function initializeSocket(server) {
   io = new Server(server, {
     cors: {
       origin: "*",
       credentials: true,
       methods: ["GET", "POST"]
-    }
+    },
+    // ✅ Optimisations serveur léger
+    pingTimeout: 30000,
+    pingInterval: 25000,
+    maxHttpBufferSize: 1e6,       // 1MB max par message
+    connectTimeout: 10000,
+    transports: ["websocket"],    // ✅ Websocket uniquement, pas de polling
+    allowUpgrades: false,
   })
 
+  // ============================================================
+  // MIDDLEWARE AUTH
+  // ============================================================
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token
-      if (!token) {
-        return next(new Error("Authentication error: token missing"))
-      }
+      if (!token) return next(new Error("token_missing"))
 
       const decoded = verifyAccessToken(token)
       socket.userId = decoded.id
       socket.userRole = decoded.role
 
       if (decoded.role === 'professional') {
-        const [pro] = await pool.query(
-          `SELECT id FROM professionals WHERE user_id = ?`,
-          [decoded.id]
-        )
-        if (pro[0]) {
-          socket.professionalId = pro[0].id
-          console.log(`🔑 Pro ${decoded.id} → professional_id: ${socket.professionalId}`)
-        } else {
-          console.log(`❌ ERREUR: Aucun professional_id trouvé pour user_id: ${decoded.id}`)
+        socket.professionalId = await getProfessionalId(decoded.id)
+        if (!socket.professionalId) {
+          return next(new Error("professional_not_found"))
         }
       }
 
       next()
     } catch (err) {
-      console.error("Socket auth error:", err.message)
-      next(new Error("Authentication error: invalid token"))
+      next(new Error("invalid_token"))
     }
   })
 
+  // ============================================================
+  // CONNEXION
+  // ============================================================
   io.on("connection", (socket) => {
-    console.log(`✅ User connected: ${socket.userId} (${socket.userRole})`)
+    const { userId, userRole, professionalId } = socket
 
-    socket.join(`user_${socket.userId}`)
-    socket.join(`role_${socket.userRole}`)
-
-    if (socket.professionalId) {
-      socket.join(`professional_${socket.professionalId}`)
-      console.log(`📌 Pro rejoint room professional_${socket.professionalId}`)
+    // Rejoindre les rooms
+    socket.join(`user_${userId}`)
+    if (userRole === 'professional' && professionalId) {
+      socket.join(`professional_${professionalId}`)
     }
 
-    console.log(`🔍 Rooms du socket ${socket.userId}:`, Array.from(socket.rooms))
-
-    socket.data = {
-      userId: socket.userId,
-      userRole: socket.userRole,
-      professionalId: socket.professionalId
-    }
-
+    // ──────────────────────────────────────────────────────────
+    // SEND MESSAGE
+    // ──────────────────────────────────────────────────────────
     socket.on("send_message", async (data) => {
+      // Rate limit : max 10 messages/seconde
+      if (isRateLimited(userId, 'send_message', 10)) {
+        return socket.emit("error", { message: "Trop de messages, ralentissez" })
+      }
+
       try {
-        const { conversationId, receiverId, receiverType, content, type = "text", media_url = null } = data
+        const {
+          conversationId,
+          receiverId,
+          receiverType,
+          content,
+          type = "text",
+          media_url = null
+        } = data
 
-        console.log(`📨 send_message reçu - receiverType: ${receiverType}, receiverId: ${receiverId}`)
+        if (!content && !media_url) return
+        if (!receiverId || !receiverType) return
 
-        const senderType = socket.userRole === "professional" ? "professional" : "user"
-
+        const senderType = userRole === "professional" ? "professional" : "user"
         let convId = conversationId
 
+        // Trouver ou créer la conversation
         if (!convId) {
-          let existingConv = null
+          const userIdVal   = senderType === "user" ? userId : receiverId
+          const proIdVal    = senderType === "professional" ? userId : receiverId
 
-          if (senderType === "user") {
-            const [rows] = await pool.query(
-              `SELECT id FROM conversations WHERE user_id = ? AND professional_id = ?`,
-              [socket.userId, receiverId]
-            )
-            existingConv = rows[0]
-          } else {
-            const [rows] = await pool.query(
-              `SELECT id FROM conversations WHERE user_id = ? AND professional_id = ?`,
-              [receiverId, socket.userId]
-            )
-            existingConv = rows[0]
-          }
+          const [rows] = await pool.query(
+            `SELECT id FROM conversations WHERE user_id = ? AND professional_id = ? LIMIT 1`,
+            [userIdVal, proIdVal]
+          )
 
-          if (existingConv) {
-            convId = existingConv.id
+          if (rows[0]) {
+            convId = rows[0].id
           } else {
-            if (senderType === "user") {
-              const [result] = await pool.query(
-                `INSERT INTO conversations (user_id, professional_id) VALUES (?, ?)`,
-                [socket.userId, receiverId]
-              )
-              convId = result.insertId
-            } else {
-              const [result] = await pool.query(
-                `INSERT INTO conversations (user_id, professional_id) VALUES (?, ?)`,
-                [receiverId, socket.userId]
-              )
-              convId = result.insertId
-            }
+            const [result] = await pool.query(
+              `INSERT INTO conversations (user_id, professional_id) VALUES (?, ?)`,
+              [userIdVal, proIdVal]
+            )
+            convId = result.insertId
           }
         }
 
+        // Insérer le message
         const [msgResult] = await pool.query(
           `INSERT INTO messages (conversation_id, sender_id, sender_type, content, type, media_url)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [convId, socket.userId, senderType, content, type, media_url]
+          [convId, userId, senderType, content, type, media_url]
         )
 
-        await pool.query(
+        // Update conversation (sans attendre)
+        pool.query(
           `UPDATE conversations SET last_message_at = NOW() WHERE id = ?`,
           [convId]
-        )
+        ).catch(() => {})
 
+        // Récupérer le message inséré
         const [newMessage] = await pool.query(
-          `SELECT * FROM messages WHERE id = ?`,
+          `SELECT * FROM messages WHERE id = ? LIMIT 1`,
           [msgResult.insertId]
         )
+
+        const msg = newMessage[0]
+
+        // Trouver la room du destinataire
+        let receiverRoom = null
+        if (receiverType === 'user') {
+          receiverRoom = `user_${receiverId}`
+        } else if (receiverType === 'professional') {
+          const proId = await getProfessionalId(receiverId) // ✅ Cache
+          if (proId) receiverRoom = `professional_${proId}`
+        }
+
+        // Émettre au destinataire
+        if (receiverRoom) {
+          io.to(receiverRoom).emit("receive_message", {
+            message: msg,
+            conversationId: convId
+          })
+        }
+
+        // Confirmer à l'expéditeur
+        socket.emit("message_sent", {
+          message: msg,
+          conversationId: convId
+        })
+
+      } catch (err) {
+        console.error("send_message error:", err.message)
+        socket.emit("error", { message: "Erreur lors de l'envoi" })
+      }
+    })
+
+    // ──────────────────────────────────────────────────────────
+    // TYPING (rate limit strict)
+    // ──────────────────────────────────────────────────────────
+    socket.on("typing", async (data) => {
+      if (isRateLimited(userId, 'typing', 3)) return
+
+      try {
+        const { conversationId, receiverId, receiverType, isTyping } = data
+        if (!receiverId) return
 
         let receiverRoom = null
         if (receiverType === 'user') {
           receiverRoom = `user_${receiverId}`
         } else if (receiverType === 'professional') {
-          const [proRow] = await pool.query(
-            `SELECT id FROM professionals WHERE user_id = ?`,
-            [receiverId]
-          )
-          if (proRow[0]) {
-            receiverRoom = `professional_${proRow[0].id}`
-            console.log(`✅ Room pro correcte: ${receiverRoom}`)
-          } else {
-            console.log(`❌ Aucun pro trouvé pour user_id: ${receiverId}`)
-          }
+          const proId = await getProfessionalId(receiverId)
+          if (proId) receiverRoom = `professional_${proId}`
         }
 
-        console.log(`📤 Émission vers room: ${receiverRoom}`)
-
-        const roomSockets = await io.in(receiverRoom).fetchSockets()
-        console.log(`📊 Nombre de clients dans ${receiverRoom}: ${roomSockets.length}`)
-
-        if (receiverRoom && roomSockets.length > 0) {
-          io.to(receiverRoom).emit("receive_message", {
-            message: newMessage[0],
-            conversationId: convId
+        if (receiverRoom) {
+          io.to(receiverRoom).emit("user_typing", {
+            conversationId,
+            userId,
+            userRole,
+            isTyping
           })
-          console.log(`✅ Message émis vers ${receiverRoom}`)
-        } else {
-          console.log(`⚠️ Room ${receiverRoom} vide ou inexistante!`)
         }
-
-        socket.emit("message_sent", {
-          message: newMessage[0],
-          conversationId: convId
-        })
-
       } catch (err) {
-        console.error("send_message error:", err)
-        socket.emit("error", { message: "Erreur lors de l'envoi" })
+        // Silencieux — typing non critique
       }
     })
 
+    // ──────────────────────────────────────────────────────────
+    // MARK READ
+    // ──────────────────────────────────────────────────────────
     socket.on("mark_read", async (data) => {
+      if (isRateLimited(userId, 'mark_read', 5)) return
       try {
         const { messageId, conversationId } = data
-
-        const otherPartyType = socket.userRole === "user" ? "professional" : "user"
-
+        const otherPartyType = userRole === "user" ? "professional" : "user"
         const [result] = await pool.query(
-          `UPDATE messages 
-           SET is_read = 1 
-           WHERE conversation_id = ? 
-           AND sender_type = ? 
-           AND is_read = 0
-           AND is_unsent = FALSE`,  // ✅ AJOUT FILTRE UNSEND
+          `UPDATE messages SET is_read = 1
+           WHERE conversation_id = ? AND sender_type = ? AND is_read = 0 AND is_unsent = FALSE`,
           [conversationId, otherPartyType]
         )
-
-        socket.emit("read_confirmed", {
-          messageId,
-          conversationId,
-          updatedCount: result.affectedRows
-        })
+        socket.emit("read_confirmed", { messageId, conversationId, updatedCount: result.affectedRows })
       } catch (err) {
-        console.error("mark_read error:", err)
+        console.error("mark_read error:", err.message)
       }
     })
 
+    socket.on("mark_conversation_read", async (data) => {
+      if (isRateLimited(userId, 'mark_conversation_read', 5)) return
+      try {
+        const { conversationId } = data
+        const otherPartyType = userRole === "user" ? "professional" : "user"
+        const [result] = await pool.query(
+          `UPDATE messages SET is_read = 1
+           WHERE conversation_id = ? AND sender_type = ? AND is_read = 0 AND is_unsent = FALSE`,
+          [conversationId, otherPartyType]
+        )
+        socket.emit("conversation_read_confirmed", { conversationId, updatedCount: result.affectedRows })
+      } catch (err) {
+        console.error("mark_conversation_read error:", err.message)
+      }
+    })
+
+    // ──────────────────────────────────────────────────────────
+    // GET CONVERSATION HISTORY
+    // ──────────────────────────────────────────────────────────
     socket.on("get_conversation", async (data) => {
+      if (isRateLimited(userId, 'get_conversation', 3)) return
       try {
         const { conversationId, limit = 50, offset = 0 } = data
-
         const [messages] = await pool.query(
-          `SELECT * FROM messages 
-           WHERE conversation_id = ? 
-             AND is_unsent = FALSE  -- ✅ FILTRER UNSEND
-           ORDER BY created_at DESC 
+          `SELECT * FROM messages
+           WHERE conversation_id = ? AND is_unsent = FALSE
+           ORDER BY created_at DESC
            LIMIT ? OFFSET ?`,
           [conversationId, parseInt(limit), parseInt(offset)]
         )
-
         socket.emit("conversation_history", {
           success: true,
           conversationId,
@@ -213,131 +288,37 @@ export function initializeSocket(server) {
           hasMore: messages.length === parseInt(limit)
         })
       } catch (err) {
-        console.error("get_conversation error:", err)
+        console.error("get_conversation error:", err.message)
         socket.emit("error", { message: "Erreur lors de la récupération" })
       }
     })
 
-    socket.on("typing", async (data) => {
-      try {
-        const { conversationId, receiverId, receiverType, isTyping } = data
-
-        let receiverRoom = null
-        if (receiverType === 'user') {
-          receiverRoom = `user_${receiverId}`
-        } else if (receiverType === 'professional') {
-          const [proRow] = await pool.query(
-            `SELECT id FROM professionals WHERE user_id = ?`,
-            [receiverId]
-          )
-          if (proRow[0]) {
-            receiverRoom = `professional_${proRow[0].id}`
-          }
-        } else {
-          receiverRoom = `user_${receiverId}`
-        }
-
-        console.log(`⌨️ Typing - room: ${receiverRoom}, isTyping: ${isTyping}`)
-
-        if (receiverRoom) {
-          io.to(receiverRoom).emit("user_typing", {
-            conversationId,
-            userId: socket.userId,
-            userRole: socket.userRole,
-            isTyping
-          })
-        }
-      } catch (err) {
-        console.error("typing error:", err)
-      }
-    })
-
-    socket.on("mark_conversation_read", async (data) => {
-      try {
-        const { conversationId } = data
-
-        const otherPartyType = socket.userRole === "user" ? "professional" : "user"
-
-        const [result] = await pool.query(
-          `UPDATE messages 
-           SET is_read = 1 
-           WHERE conversation_id = ? 
-           AND sender_type = ? 
-           AND is_read = 0
-           AND is_unsent = FALSE`,  // ✅ AJOUT FILTRE UNSEND
-          [conversationId, otherPartyType]
-        )
-
-        socket.emit("conversation_read_confirmed", {
-          conversationId,
-          updatedCount: result.affectedRows
-        })
-      } catch (err) {
-        console.error("mark_conversation_read error:", err)
-      }
-    })
-
-    // ============================================================
-    // 🆕 EVENEMENTS UNSEND (SOCKET.IO)
-    // ============================================================
-
-    /**
-     * UNSEND un message (le sender supprime pour tout le monde)
-     * Emis par le sender quand il fait UNSEND
-     */
+    // ──────────────────────────────────────────────────────────
+    // UNSEND MESSAGE
+    // ──────────────────────────────────────────────────────────
     socket.on("unsend_message", async (data) => {
+      if (isRateLimited(userId, 'unsend_message', 5)) return
       try {
         const { messageId, conversationId } = data
-        const userId = socket.userId
-        const userRole = socket.userRole
 
-        console.log(`🔴 UNSEND - messageId: ${messageId}, userId: ${userId}`)
-
-        // 1. Verifier que le message existe et que l'utilisateur est l'expediteur
         const [messages] = await pool.query(
-          `SELECT * FROM messages WHERE id = ? AND sender_id = ?`,
+          `SELECT id, is_unsent FROM messages WHERE id = ? AND sender_id = ? LIMIT 1`,
           [messageId, userId]
         )
 
         if (messages.length === 0) {
-          socket.emit("unsend_error", {
-            success: false,
-            message: "Message non trouve ou vous n'etes pas l'expediteur"
-          })
-          return
+          return socket.emit("unsend_error", { success: false, message: "Message introuvable" })
+        }
+        if (messages[0].is_unsent) {
+          return socket.emit("unsend_error", { success: false, message: "Déjà supprimé" })
         }
 
-        const message = messages[0]
-
-        // 2. Verifier que le message n'est pas deja unsend
-        if (message.is_unsent) {
-          socket.emit("unsend_error", {
-            success: false,
-            message: "Ce message a deja ete unsend"
-          })
-          return
-        }
-
-        // 3. Marquer le message comme unsend
         await pool.query(
-          `UPDATE messages 
-           SET is_unsent = TRUE, 
-               unsent_at = NOW(),
-               unsent_by = ?
-           WHERE id = ?`,
+          `UPDATE messages SET is_unsent = TRUE, unsent_at = NOW(), unsent_by = ? WHERE id = ?`,
           [userId, messageId]
         )
 
-        // 4. Recuperer le message mis a jour
-        const [updatedMessage] = await pool.query(
-          `SELECT * FROM messages WHERE id = ?`,
-          [messageId]
-        )
-
-        // 5. Notifier les deux parties
-        const senderRoom = userRole === 'user' ? `user_${userId}` : `professional_${socket.professionalId || conversationId}`
-        
-        // Notifier le sender
+        // Confirmer à l'expéditeur
         socket.emit("message_unsent_confirmed", {
           success: true,
           messageId: parseInt(messageId),
@@ -347,27 +328,7 @@ export function initializeSocket(server) {
         })
 
         // Notifier le destinataire
-        const receiverType = userRole === 'user' ? 'professional' : 'user'
-        let receiverRoom = null
-        
-        if (receiverType === 'user') {
-          const [conv] = await pool.query(
-            `SELECT user_id FROM conversations WHERE id = ?`,
-            [conversationId]
-          )
-          if (conv.length > 0) {
-            receiverRoom = `user_${conv[0].user_id}`
-          }
-        } else {
-          const [conv] = await pool.query(
-            `SELECT professional_id FROM conversations WHERE id = ?`,
-            [conversationId]
-          )
-          if (conv.length > 0) {
-            receiverRoom = `professional_${conv[0].professional_id}`
-          }
-        }
-
+        const receiverRoom = await getReceiverRoom(conversationId, userRole, professionalId)
         if (receiverRoom) {
           io.to(receiverRoom).emit("message_unsent", {
             messageId: parseInt(messageId),
@@ -375,93 +336,38 @@ export function initializeSocket(server) {
             unsentBy: userId,
             unsentAt: new Date()
           })
-          console.log(`📤 UNSEND - Notification envoyee a ${receiverRoom}`)
         }
 
-        console.log(`✅ UNSEND - Message ${messageId} unsend avec succes`)
-
       } catch (err) {
-        console.error("unsend_message error:", err)
-        socket.emit("unsend_error", {
-          success: false,
-          message: "Erreur lors de l'unsend du message"
-        })
+        console.error("unsend_message error:", err.message)
+        socket.emit("unsend_error", { success: false, message: "Erreur lors de la suppression" })
       }
     })
 
-    /**
-     * UNSEND tous les messages d'une conversation
-     * Emis par le sender quand il fait UNSEND ALL
-     */
+    // ──────────────────────────────────────────────────────────
+    // UNSEND ALL MESSAGES
+    // ──────────────────────────────────────────────────────────
     socket.on("unsend_all_messages", async (data) => {
+      if (isRateLimited(userId, 'unsend_all', 2)) return
       try {
         const { conversationId } = data
-        const userId = socket.userId
-        const userRole = socket.userRole
 
-        console.log(`🔴 UNSEND ALL - conversationId: ${conversationId}, userId: ${userId}`)
+        // Vérifier accès
+        const accessQuery = userRole === 'user'
+          ? `SELECT id FROM conversations WHERE id = ? AND user_id = ? LIMIT 1`
+          : `SELECT c.id FROM conversations c JOIN professionals p ON c.professional_id = p.id WHERE c.id = ? AND p.user_id = ? LIMIT 1`
 
-        // 1. Verifier que l'utilisateur a acces a la conversation
-        let hasAccess = false
-        if (userRole === 'user') {
-          const [convCheck] = await pool.query(
-            `SELECT id FROM conversations WHERE id = ? AND user_id = ?`,
-            [conversationId, userId]
-          )
-          hasAccess = convCheck.length > 0
-        } else {
-          const [convCheck] = await pool.query(
-            `SELECT c.id FROM conversations c
-             JOIN professionals p ON c.professional_id = p.id
-             WHERE c.id = ? AND p.user_id = ?`,
-            [conversationId, userId]
-          )
-          hasAccess = convCheck.length > 0
+        const [convCheck] = await pool.query(accessQuery, [conversationId, userId])
+        if (convCheck.length === 0) {
+          return socket.emit("unsend_all_error", { success: false, message: "Accès refusé" })
         }
 
-        if (!hasAccess) {
-          socket.emit("unsend_all_error", {
-            success: false,
-            message: "Acces non autorise a cette conversation"
-          })
-          return
-        }
-
-        // 2. Compter les messages a unsend
-        const [countResult] = await pool.query(
-          `SELECT COUNT(*) as count FROM messages 
-           WHERE conversation_id = ? 
-           AND sender_id = ? 
-           AND is_unsent = FALSE`,
-          [conversationId, userId]
-        )
-
-        if (countResult[0].count === 0) {
-          socket.emit("unsend_all_confirmed", {
-            success: true,
-            conversationId: parseInt(conversationId),
-            affectedCount: 0,
-            message: "Aucun message a unsend"
-          })
-          return
-        }
-
-        // 3. Marquer tous les messages comme unsend
         const [result] = await pool.query(
-          `UPDATE messages 
-           SET is_unsent = TRUE, 
-               unsent_at = NOW(),
-               unsent_by = ?
-           WHERE conversation_id = ? 
-           AND sender_id = ? 
-           AND is_unsent = FALSE`,
+          `UPDATE messages SET is_unsent = TRUE, unsent_at = NOW(), unsent_by = ?
+           WHERE conversation_id = ? AND sender_id = ? AND is_unsent = FALSE`,
           [userId, conversationId, userId]
         )
 
-        // 4. Notifier les deux parties
-        const senderRoom = userRole === 'user' ? `user_${userId}` : `professional_${socket.professionalId || conversationId}`
-        
-        // Notifier le sender
         socket.emit("unsend_all_confirmed", {
           success: true,
           conversationId: parseInt(conversationId),
@@ -470,28 +376,7 @@ export function initializeSocket(server) {
           unsentAt: new Date()
         })
 
-        // Notifier le destinataire
-        const receiverType = userRole === 'user' ? 'professional' : 'user'
-        let receiverRoom = null
-        
-        if (receiverType === 'user') {
-          const [conv] = await pool.query(
-            `SELECT user_id FROM conversations WHERE id = ?`,
-            [conversationId]
-          )
-          if (conv.length > 0) {
-            receiverRoom = `user_${conv[0].user_id}`
-          }
-        } else {
-          const [conv] = await pool.query(
-            `SELECT professional_id FROM conversations WHERE id = ?`,
-            [conversationId]
-          )
-          if (conv.length > 0) {
-            receiverRoom = `professional_${conv[0].professional_id}`
-          }
-        }
-
+        const receiverRoom = await getReceiverRoom(conversationId, userRole, professionalId)
         if (receiverRoom) {
           io.to(receiverRoom).emit("messages_unsent_all", {
             conversationId: parseInt(conversationId),
@@ -499,26 +384,52 @@ export function initializeSocket(server) {
             count: result.affectedRows,
             unsentAt: new Date()
           })
-          console.log(`📤 UNSEND ALL - Notification envoyee a ${receiverRoom}`)
         }
 
-        console.log(`✅ UNSEND ALL - ${result.affectedRows} messages unsend dans la conversation ${conversationId}`)
-
       } catch (err) {
-        console.error("unsend_all_messages error:", err)
-        socket.emit("unsend_all_error", {
-          success: false,
-          message: "Erreur lors de l'unsend des messages"
-        })
+        console.error("unsend_all_messages error:", err.message)
+        socket.emit("unsend_all_error", { success: false, message: "Erreur lors de la suppression" })
       }
     })
 
-    socket.on("disconnect", () => {
-      console.log(`❌ User disconnected: ${socket.userId}`)
+    // ──────────────────────────────────────────────────────────
+    // DISCONNECT
+    // ──────────────────────────────────────────────────────────
+    socket.on("disconnect", (reason) => {
+      // Nettoyer le rate limiter pour cet utilisateur
+      for (const key of rateLimitMap.keys()) {
+        if (key.startsWith(`${userId}:`)) rateLimitMap.delete(key)
+      }
     })
   })
 
   return io
+}
+
+// ============================================================
+// HELPER — trouver la room du destinataire
+// ============================================================
+async function getReceiverRoom(conversationId, senderRole, senderProfessionalId) {
+  try {
+    if (senderRole === 'user') {
+      // L'expéditeur est un user → destinataire est le pro
+      const [conv] = await pool.query(
+        `SELECT professional_id FROM conversations WHERE id = ? LIMIT 1`,
+        [conversationId]
+      )
+      if (conv[0]) return `professional_${conv[0].professional_id}`
+    } else {
+      // L'expéditeur est un pro → destinataire est le user
+      const [conv] = await pool.query(
+        `SELECT user_id FROM conversations WHERE id = ? LIMIT 1`,
+        [conversationId]
+      )
+      if (conv[0]) return `user_${conv[0].user_id}`
+    }
+  } catch (err) {
+    console.error("getReceiverRoom error:", err.message)
+  }
+  return null
 }
 
 export { io }

@@ -10,25 +10,27 @@ import {
     getProReviews ,
     updateProLocation
 } from "../controllers/proController/profileproController/getProfileProData.js"
-import { 
-    getConversations, 
-    getMessages, 
-    markConversationAsRead,
-    sendMessage,
-    getUnreadCount,
-    uploadMessageImage,
-    // ✅ AJOUT DES NOUVEAUX CONTROLLERS UNSEND
-    unsendMessage,
-    unsendAllMessages,
-    getUnsentMessages
-} from "../controllers/messageController/messageController.js"
+
+
+
+import { createConversation} from "../controllers/messageController/createConversation.js"
+import {getConversations} from "../controllers/messageController/getConversations.js"
+import { getMessages } from "../controllers/messageController/getMessages.js"
+import { getUnreadCount } from "../controllers/messageController/getUnreadCount.js"
+import { getUnsentMessages} from "../controllers/messageController/getUnsentMessages.js"
+import { markConversationAsRead} from "../controllers/messageController/markConversationAsRead.js"
+import { sendMessage} from "../controllers/messageController/sendMessage.js"
+import { unsendAllMessages } from "../controllers/messageController/unsendAllMessages.js"
+import { unsendMessage } from "../controllers/messageController/unsendMessage.js"
+import { uploadMessageImage } from "../controllers/messageController/uploadMessageImage.js"
+
 
 // ✅ IMPORTER LES CONTROLLERS MANQUANTS
 import { getProStats } from "../controllers/proController/homeproController/getProStats.js"
 import { getProDashboardData } from "../controllers/proController/homeproController/getProDashboardData.js"
 import { getRecentMessages } from "../controllers/proController/homeproController/getRecentMessages.js"
 import { getUnreadConversations } from "../controllers/proController/homeproController/getUnreadConversations.js"
-import { registerPushToken, deactivatePushToken } from "../controllers/notificationController.js"
+
 
 const router = Router()
 
@@ -78,7 +80,6 @@ router.delete("/conversations/:conversationId/unsend-all", unsendAllMessages)
 router.get("/conversations/:conversationId/unsent", getUnsentMessages)
 
 // ─── Notifications ─────────────────────────────────────────
-router.post("/notifications/register-token", registerPushToken)
-router.post("/notifications/deactivate-token", deactivatePushToken)
+
 
 export default router

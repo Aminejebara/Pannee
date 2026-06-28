@@ -3,7 +3,7 @@ import useAuthStore from '../store/useAuthStore'
 
 //const API_URL = "https://panneapi.duckdns.org/api" 
 
-const API_URL = "https://pannebackend.duckdns.org/api" // URL du backend
+const API_URL = "https://panneapi.duckdns.org/api" // URL du backend
 
 console.log('🔵 API_URL:', API_URL)
 

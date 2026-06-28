@@ -19,7 +19,7 @@ import {
   StatusBar,
   Keyboard,
 } from 'react-native'
-import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -47,14 +47,14 @@ function ConversationDetailInner() {
   const userHook = useUser()
   const proHook = usePro()
   const hook = isPro ? proHook : userHook
-  const { 
-    getMessages, 
-    markConversationAsRead, 
-    uploadMessageImage, 
+  const {
+    getMessages,
+    markConversationAsRead,
+    uploadMessageImage,
     sendMessage: sendMessageHttp,
     unsendMessage,
     unsendAllMessages,
-    loading 
+    loading
   } = hook
 
   const [messages, setMessages] = useState([])
@@ -66,12 +66,12 @@ function ConversationDetailInner() {
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedMessage, setSelectedMessage] = useState(null)
   const [showMessageOptions, setShowMessageOptions] = useState(false)
+
   const scrollViewRef = useRef()
   const typingTimeoutRef = useRef(null)
   const messagesCountRef = useRef(0)
 
-  // Sur Android, quand le clavier se ferme le ScrollView remonte tout seul
-  // mais ne revient PAS en bas — on force un snap sans animation
+  // ─── Clavier Android ────────────────────────────────────
   useEffect(() => {
     const sub = Keyboard.addListener('keyboardDidHide', () => {
       scrollViewRef.current?.scrollToEnd({ animated: false })
@@ -79,104 +79,127 @@ function ConversationDetailInner() {
     return () => sub.remove()
   }, [])
 
-  const loadMessages = async () => {
+  // ─── Charger les messages ────────────────────────────────
+  const loadMessages = useCallback(async () => {
     const result = await getMessages(conversationId)
     if (result.success) {
       setMessages(result.messages || [])
-      scrollToBottom()
+      scrollToBottom(false)
     }
-  }
+  }, [conversationId])
 
-  const markAsRead = async () => {
+  const markAsRead = useCallback(async () => {
     await markConversationAsRead(conversationId)
     const socket = getSocket()
-    if (socket) socketEvents.markConversationRead({ conversationId })
-  }
+    if (socket?.connected) {
+      socketEvents.markConversationRead({ conversationId })
+    }
+  }, [conversationId])
 
+  // ✅ FIX 1 — useFocusEffect : seulement charger les données, ne pas toucher au socket
   useFocusEffect(
     useCallback(() => {
-      const socket = getSocket()
-      if (!socket || !socket.connected) connectSocket()
       loadMessages()
       markAsRead()
     }, [conversationId])
   )
 
+  // ✅ FIX 2 — Socket connecté une seule fois au montage du composant
   useEffect(() => {
     let socket = getSocket()
-    if (!socket) {
+    if (!socket || !socket.connected) {
       connectSocket()
-      socket = getSocket()
     }
-    if (!socket) return
+  }, [])
 
-    const handleReceiveMessage = (data) => {
-      if (String(data.conversationId) === String(conversationId)) {
+  // ✅ FIX 3 — Tous les listeners dans un seul useEffect, avec cleanup propre
+  useEffect(() => {
+    // On attend que le socket soit dispo (peut arriver légèrement après le montage)
+    const attachListeners = () => {
+      const socket = getSocket()
+      if (!socket) return false
+
+      const handleReceiveMessage = (data) => {
+        if (String(data.conversationId) !== String(conversationId)) return
         setMessages(prev => {
           const exists = prev.some(m => String(m.id) === String(data.message.id))
-          if (!exists) return [...prev, data.message]
-          return prev
+          if (exists) return prev
+          return [...prev, data.message]
         })
         scrollToBottom()
         setTimeout(() => {
           markConversationAsRead(conversationId)
-          socketEvents.markConversationRead({ conversationId })
+          const s = getSocket()
+          if (s?.connected) socketEvents.markConversationRead({ conversationId })
         }, 500)
       }
-    }
 
-    const handleMessageSent = (data) => {
-      if (String(data.conversationId) === String(conversationId)) {
-        setMessages(prev => {
-          const hasTemp = prev.some(m => m.is_temp)
-          if (!hasTemp) return prev
-          return prev.map(m => m.is_temp ? { ...data.message, is_temp: false } : m)
-        })
+      const handleMessageSent = (data) => {
+        if (String(data.conversationId) !== String(conversationId)) return
+        setMessages(prev =>
+          prev.some(m => m.is_temp)
+            ? prev.map(m => m.is_temp ? { ...data.message, is_temp: false } : m)
+            : prev
+        )
         scrollToBottom()
       }
-    }
 
-    const handleUserTyping = (data) => {
-      if (String(data.conversationId) === String(conversationId) && String(data.userId) !== String(user?.id)) {
+      const handleUserTyping = (data) => {
+        if (String(data.conversationId) !== String(conversationId)) return
+        if (String(data.userId) === String(user?.id)) return
         setOtherUserTyping(data.isTyping)
         if (data.isTyping) setTimeout(() => setOtherUserTyping(false), 3000)
       }
-    }
 
-    // 🆕 EVENEMENTS UNSEND
-    const handleMessageUnsent = (data) => {
-      if (String(data.conversationId) === String(conversationId)) {
-        setMessages(prev => prev.filter(m => m.id !== data.messageId))
+      // ✅ FIX 4 — Comparer en String pour éviter mismatch int/string
+      const handleMessageUnsent = (data) => {
+        if (String(data.conversationId) !== String(conversationId)) return
+        setMessages(prev => prev.filter(m => String(m.id) !== String(data.messageId)))
+      }
+
+      const handleMessagesUnsentAll = (data) => {
+        if (String(data.conversationId) !== String(conversationId)) return
+        setMessages(prev => prev.filter(m => String(m.sender_id) !== String(data.unsentBy)))
+      }
+
+      socket.on('receive_message', handleReceiveMessage)
+      socket.on('message_sent', handleMessageSent)
+      socket.on('user_typing', handleUserTyping)
+      socket.on('message_unsent', handleMessageUnsent)
+      socket.on('messages_unsent_all', handleMessagesUnsentAll)
+
+      // Retourner la fonction de cleanup avec la même instance socket
+      return () => {
+        socket.off('receive_message', handleReceiveMessage)
+        socket.off('message_sent', handleMessageSent)
+        socket.off('user_typing', handleUserTyping)
+        socket.off('message_unsent', handleMessageUnsent)
+        socket.off('messages_unsent_all', handleMessagesUnsentAll)
       }
     }
 
-    const handleMessagesUnsentAll = (data) => {
-      if (String(data.conversationId) === String(conversationId)) {
-        setMessages(prev => prev.filter(m => m.sender_id !== data.unsentBy))
-      }
-    }
+    // Tenter immédiatement, sinon attendre 300ms que connectSocket() finisse
+    let cleanup = attachListeners()
+    let timer = null
 
-    socket.on('receive_message', handleReceiveMessage)
-    socket.on('message_sent', handleMessageSent)
-    socket.on('user_typing', handleUserTyping)
-    socket.on('message_unsent', handleMessageUnsent)
-    socket.on('messages_unsent_all', handleMessagesUnsentAll)
+    if (!cleanup) {
+      timer = setTimeout(() => {
+        cleanup = attachListeners()
+      }, 300)
+    }
 
     return () => {
-      socket.off('receive_message', handleReceiveMessage)
-      socket.off('message_sent', handleMessageSent)
-      socket.off('user_typing', handleUserTyping)
-      socket.off('message_unsent', handleMessageUnsent)
-      socket.off('messages_unsent_all', handleMessagesUnsentAll)
+      if (timer) clearTimeout(timer)
+      if (typeof cleanup === 'function') cleanup()
     }
   }, [conversationId, user?.id])
 
+  // ─── Scroll vers le bas ──────────────────────────────────
   const scrollToBottom = (animated = true) => {
     setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated }), 150)
   }
 
-  // Scroll uniquement quand un nouveau message arrive,
-  // pas quand le clavier s'ouvre/ferme (évite le "stuck at top")
+  // Scroll auto quand nouveaux messages
   useEffect(() => {
     if (messages.length > messagesCountRef.current) {
       messagesCountRef.current = messages.length
@@ -262,9 +285,9 @@ function ConversationDetailInner() {
       Alert.alert('Permission', 'Accès à la caméra nécessaire')
       return
     }
-    const result = await ImagePicker.launchCameraAsync({ 
+    const result = await ImagePicker.launchCameraAsync({
       allowsEditing: false,
-      quality: 0.7 
+      quality: 0.7
     })
     if (!result.canceled) await sendImage(result.assets[0].uri)
   }
@@ -282,7 +305,7 @@ function ConversationDetailInner() {
     })
     if (!result.canceled) await sendImage(result.assets[0].uri)
   }
-  
+
   const sendImage = async (uri) => {
     const tempId = `temp_${Date.now()}_${Math.random()}`
     const optimisticMessage = {
@@ -312,7 +335,7 @@ function ConversationDetailInner() {
     setSending(false)
   }
 
-  // ─── Localisation → ouvre Google Maps ───────────────────
+  // ─── Localisation ────────────────────────────────────────
   const sendLocation = async () => {
     setSendingLocation(true)
     const tempId = `temp_${Date.now()}_${Math.random()}`
@@ -361,11 +384,12 @@ function ConversationDetailInner() {
     }
   }
 
+  // ─── Typing indicator ────────────────────────────────────
   const handleTyping = (typing) => {
     if (typing !== isTyping) {
       setIsTyping(typing)
       const socket = getSocket()
-      if (socket && otherPartyId) {
+      if (socket?.connected && otherPartyId) {
         socket.emit('typing', {
           conversationId,
           receiverId: otherPartyId,
@@ -384,45 +408,36 @@ function ConversationDetailInner() {
     else typingTimeoutRef.current = setTimeout(() => handleTyping(false), 1500)
   }
 
-  // ============================================================
-  // 🆕 GESTION UNSEND
-  // ============================================================
-
+  // ─── Unsend ──────────────────────────────────────────────
   const handleLongPressMessage = (message) => {
     const isOwnMessage = isPro ? message.sender_type === 'professional' : message.sender_type === 'user'
-    if (!isOwnMessage) return
-    if (message.is_temp) return
-    
+    if (!isOwnMessage || message.is_temp) return
     setSelectedMessage(message)
     setShowMessageOptions(true)
   }
 
   const handleUnsendMessage = async () => {
     if (!selectedMessage) return
-
     Alert.alert(
       'Supprimer ce message',
       'Voulez-vous vraiment supprimer ce message ?\n\nIl sera supprimé pour tout le monde.',
       [
         { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Supprimer', 
+        {
+          text: 'Supprimer',
           style: 'destructive',
           onPress: async () => {
             try {
-              // Optimistic update
               const messageId = selectedMessage.id
               setMessages(prev => prev.filter(m => m.id !== messageId))
               setShowMessageOptions(false)
               setSelectedMessage(null)
-
               const result = await unsendMessage(messageId)
               if (!result.success) {
-                // En cas d'erreur, remettre le message
                 setMessages(prev => [...prev, selectedMessage])
                 Alert.alert('Erreur', result.error || 'Impossible de supprimer le message')
               }
-            } catch (error) {
+            } catch {
               setMessages(prev => [...prev, selectedMessage])
               Alert.alert('Erreur', 'Une erreur est survenue')
             }
@@ -435,11 +450,11 @@ function ConversationDetailInner() {
   const handleUnsendAllMessages = async () => {
     Alert.alert(
       'Supprimer tous vos messages',
-      `Voulez-vous vraiment supprimer tous vos messages de cette conversation ?\n\nCette action est irreversible et les messages seront supprimes pour tout le monde.`,
+      'Voulez-vous vraiment supprimer tous vos messages de cette conversation ?\n\nCette action est irréversible et les messages seront supprimés pour tout le monde.',
       [
         { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Supprimer tout', 
+        {
+          text: 'Supprimer tout',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -449,11 +464,11 @@ function ConversationDetailInner() {
                   const isOwn = isPro ? m.sender_type === 'professional' : m.sender_type === 'user'
                   return !isOwn
                 }))
-                Alert.alert('Succes', `${result.affectedCount} message(s) supprime(s)`)
+                Alert.alert('Succès', `${result.affectedCount} message(s) supprimé(s)`)
               } else {
                 Alert.alert('Erreur', result.error || 'Impossible de supprimer les messages')
               }
-            } catch (error) {
+            } catch {
               Alert.alert('Erreur', 'Une erreur est survenue')
             }
           }
@@ -462,11 +477,13 @@ function ConversationDetailInner() {
     )
   }
 
+  // ─── Format heure ────────────────────────────────────────
   const formatTime = (dateString) => {
     if (!dateString) return ''
     return new Date(dateString).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   }
 
+  // ─── Rendu message ───────────────────────────────────────
   const renderMessage = (item, index) => {
     const isOwnMessage = isPro ? item.sender_type === 'professional' : item.sender_type === 'user'
     const isImage = item.type === 'image'
@@ -548,12 +565,9 @@ function ConversationDetailInner() {
 
   return (
     <View style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-        translucent={false}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
 
+      {/* ─── Header ─────────────────────────────────────── */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.6}>
           <Ionicons name="chevron-back" size={24} color={COLORS.black} />
@@ -567,7 +581,9 @@ function ConversationDetailInner() {
               </View>
           }
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName} numberOfLines={1}>{contactName || (isPro ? 'Client' : 'Professionnel')}</Text>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {contactName || (isPro ? 'Client' : 'Professionnel')}
+            </Text>
             {otherUserTyping
               ? <Text style={styles.typingIndicator}>en train d'écrire...</Text>
               : contactPhone
@@ -585,15 +601,13 @@ function ConversationDetailInner() {
         >
           <Ionicons name="call" size={20} color="#FFFFFF" />
         </TouchableOpacity>
-
-        {/* 🆕 Bouton pour supprimer tous les messages */}
-
       </View>
 
+      {/* ─── Messages + Input ────────────────────────────── */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           ref={scrollViewRef}
@@ -618,10 +632,7 @@ function ConversationDetailInner() {
           )}
         </ScrollView>
 
-        <View style={[
-          styles.inputSection,
-          { paddingBottom: Math.max(insets.bottom, 10) }
-        ]}>
+        <View style={[styles.inputSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <View style={styles.inputWrapper}>
             <TouchableOpacity style={styles.iconButton} onPress={handleCameraPress} disabled={sending} activeOpacity={0.6}>
               <Ionicons name="camera-outline" size={22} color={sending ? COLORS.gray[300] : COLORS.gray[500]} />
@@ -657,7 +668,7 @@ function ConversationDetailInner() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* 🆕 MODAL OPTIONS MESSAGE */}
+      {/* ─── Modal options message ───────────────────────── */}
       <Modal
         transparent={true}
         visible={showMessageOptions}
@@ -677,10 +688,7 @@ function ConversationDetailInner() {
 
                 <View style={styles.modalDivider} />
 
-                <TouchableOpacity 
-                  style={styles.modalOption}
-                  onPress={handleUnsendMessage}
-                >
+                <TouchableOpacity style={styles.modalOption} onPress={handleUnsendMessage}>
                   <View style={[styles.modalOptionIcon, { backgroundColor: '#FEE2E2' }]}>
                     <Ionicons name="trash-outline" size={22} color="#DC2626" />
                   </View>
@@ -694,7 +702,7 @@ function ConversationDetailInner() {
                   </View>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.modalOption, styles.modalOptionLast]}
                   onPress={() => {
                     setShowMessageOptions(false)
@@ -902,7 +910,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // ─── Modal options message ────────────────────────────────
+  // ─── Modal options message ─────────────────────────────────
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

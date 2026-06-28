@@ -16,7 +16,7 @@ export default function ProLayout() {
           backgroundColor: COLORS.white,
           borderTopWidth: 1,
           borderTopColor: COLORS.gray[100], 
-          height: Platform.OS === 'ios' ? 90 : 70,
+          height: Platform.OS === 'ios' ? 90 : 110,
           paddingBottom: Platform.OS === 'ios' ? 30 : 12,
           paddingTop: 12,
           // Ombre très légère style Airbnb/Premium

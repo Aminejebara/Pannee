@@ -371,7 +371,7 @@ const uploadProAvatar = async (req, res) => {
         }
 
         //const baseUrl = 'https://pannebackend.duckdns.org';
-        const baseUrl = "https://panneapi.duckdns.org/api"
+        const baseUrl = "http://192.168.1.109:5000"
         const avatarUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
 
         await connection.execute(

@@ -7,20 +7,22 @@ import { updateProfile } from "../controllers/userController/profileController/u
 import { deleteAccount } from "../controllers/userController/profileController/deleteAccount.js"
 import { uploadUserAvatar } from "../controllers/userController/profileController/uploadAvatar.js"
 import { getHomeData, getNearbyProfessionals , updateUserLocation} from "../controllers/userController/homeController/getHomeData.js"
-import { 
-    getConversations, 
-    getMessages, 
-    markConversationAsRead,
-    createConversation,
-    sendMessage,
-    getUnreadCount,
-    uploadMessageImage,
-    // ✅ AJOUT DES NOUVEAUX CONTROLLERS UNSEND
-    unsendMessage,
-    unsendAllMessages,
-    getUnsentMessages
-} from "../controllers/messageController/messageController.js"
-import { registerPushToken, deactivatePushToken } from "../controllers/notificationController.js"
+
+
+import { createConversation} from "../controllers/messageController/createConversation.js"
+import {getConversations} from "../controllers/messageController/getConversations.js"
+import { getMessages } from "../controllers/messageController/getMessages.js"
+import { getUnreadCount } from "../controllers/messageController/getUnreadCount.js"
+import { getUnsentMessages} from "../controllers/messageController/getUnsentMessages.js"
+import { markConversationAsRead} from "../controllers/messageController/markConversationAsRead.js"
+import { sendMessage} from "../controllers/messageController/sendMessage.js"
+import { unsendAllMessages } from "../controllers/messageController/unsendAllMessages.js"
+import { unsendMessage } from "../controllers/messageController/unsendMessage.js"
+import { uploadMessageImage } from "../controllers/messageController/uploadMessageImage.js"
+
+
+
+
 
 const router = Router()
 
@@ -66,7 +68,5 @@ router.delete("/conversations/:conversationId/unsend-all", unsendAllMessages)
 router.get("/conversations/:conversationId/unsent", getUnsentMessages)
 
 // ─── Notifications ─────────────────────────────────────────
-router.post("/notifications/register-token", registerPushToken)
-router.post("/notifications/deactivate-token", deactivatePushToken)
 
 export default router
